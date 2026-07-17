@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #162a46;
+  --navy-deep: #102238;
+  --navy-soft: #eef1f4;
+  --champagne: #d8d0c1;
+  --gold: #b98a52;
+  --gold-deep: #8e6538;
+  --gold-soft: #f6efe6;
+  --background: #f8f6f2;
+  --surface: #ffffff;
+  --surface-muted: #f5f3ef;
+  --text: #344154;
+  --text-muted: #788190;
+  --text-light: #a5a8ad;
+  --border: #e9e5de;
+  --border-strong: #ddd7cd;
+  --success: #557d64;
+  --success-soft: #edf4ef;
+  --radius-card: 14px;
+  --shadow-card: 0 4px 18px rgba(22, 42, 70, 0.045);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--text);
+  --font-sans: "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.panel-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.metric-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  content: "";
+  background: transparent;
+  transition: background-color 180ms ease;
+}
+
+.metric-card:hover::before {
+  background: var(--champagne);
+}
+
+.action-button {
+  display: inline-flex;
+  height: 29px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0 9px;
+  font-size: 9px;
+  font-weight: 500;
+  transition: transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
+}
+
+.action-button svg {
+  height: 13px;
+  width: 13px;
+}
+
+.action-button:active {
+  transform: translateY(1px);
+}
+
+.action-button-ghost {
+  color: var(--text-muted);
+}
+
+.action-button-ghost:hover,
+.action-button-light {
+  background: var(--surface-muted);
+  color: var(--navy);
+}
+
+.action-button-light {
+  border-color: var(--border);
+}
+
+.action-button-light:hover {
+  border-color: var(--champagne);
+}
+
+.action-button-gold {
+  background: var(--gold-soft);
+  color: var(--gold-deep);
+}
+
+.action-button-gold:hover {
+  background: #f0e4d4;
+}
+
+.action-button-navy {
+  background: var(--navy);
+  color: white;
+  box-shadow: 0 4px 12px rgba(22, 42, 70, 0.16);
+}
+
+.action-button-navy:hover {
+  background: var(--navy-deep);
+}
+
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--champagne) transparent;
+}
+
+.chat-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--champagne);
+}
+
+@media (min-width: 1700px) {
+  .action-button {
+    height: 31px;
+    padding-inline: 11px;
+    font-size: 10px;
+  }
+}
+
+@media (max-height: 820px) {
+  .metric-card {
+    min-height: 92px;
+    padding-block: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
