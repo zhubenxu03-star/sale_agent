@@ -34,6 +34,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!backend/.env.example
 
 # vercel
 .vercel
@@ -45,6 +46,16 @@ yarn-error.log*
 /.uploads/
 *.tmp
 *.temp
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+backend/.venv/
 
 # typescript
 *.tsbuildinfo
