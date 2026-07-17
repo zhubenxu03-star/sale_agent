@@ -1,6 +1,6 @@
 # Sales Agent Backend
 
-销转智能体第二阶段后端基础服务，基于 FastAPI、SQLAlchemy 2、PostgreSQL 和 Alembic。当前范围仅包含多租户企业、认证、客户和会话数据，不包含大语言模型或知识库能力。
+销转智能体后端服务，基于 FastAPI、SQLAlchemy 2、PostgreSQL + pgvector、Alembic、Celery 和 Redis。当前范围包含多租户企业、认证、客户、会话以及企业知识库；不包含大语言模型回复、OCR 或销冠知识库。
 
 ## 架构
 
@@ -13,7 +13,8 @@ backend/
 │   ├── dependencies/    # JWT 当前用户依赖
 │   ├── models/          # 六张业务表模型
 │   ├── schemas/         # Pydantic 请求/响应结构
-│   ├── services/        # 注册和认证事务服务
+│   ├── services/        # 业务服务与知识解析/切片/向量/检索
+│   ├── tasks/           # Celery 应用和文档处理任务
 │   └── main.py          # FastAPI 应用入口
 ├── alembic/              # 数据库迁移
 └── tests/                # 隔离测试数据库的自动化测试
@@ -22,7 +23,8 @@ backend/
 ## 环境要求
 
 - Python 3.12
-- PostgreSQL 16（推荐；PostgreSQL 14+ 可运行）
+- PostgreSQL 16 + pgvector
+- Redis 7
 - Docker Desktop（可选）
 
 ## 本地安装
@@ -58,6 +60,24 @@ JWT_SECRET_KEY=replace-with-secure-key
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
 CORS_ORIGINS=http://localhost:3000
+APP_ENV=development
+TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/sales_agent_test
+REDIS_URL=redis://localhost:6379/0
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
+KNOWLEDGE_STORAGE_PATH=./data/knowledge
+KNOWLEDGE_MAX_FILE_SIZE_MB=20
+KNOWLEDGE_ALLOWED_EXTENSIONS=pdf,docx,txt,md,xlsx,csv
+CHUNK_TARGET_SIZE=600
+CHUNK_OVERLAP=100
+CHUNK_MIN_SIZE=80
+EMBEDDING_PROVIDER=test
+EMBEDDING_BASE_URL=
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=
+EMBEDDING_DIMENSIONS=1536
+EMBEDDING_BATCH_SIZE=32
+EMBEDDING_TIMEOUT_SECONDS=30
 ```
 
 生产环境必须更换高强度 `JWT_SECRET_KEY`。真实 `.env` 已被 Git 忽略。
@@ -95,7 +115,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-容器后端会等待 PostgreSQL 健康检查通过，自动执行 `alembic upgrade head`，再启动 Uvicorn。前端仍单独使用 `pnpm dev`。
+独立 `migrate` 服务等待 PostgreSQL 后执行一次 `alembic upgrade head`；`backend` 和 `worker` 同时等待 PostgreSQL、Redis 健康且迁移成功后启动。前端仍单独使用 `pnpm dev`。
 
 停止服务：
 
@@ -117,7 +137,37 @@ python -m compileall -q app alembic
 pytest
 ```
 
-pytest 使用独立的内存数据库，并为每个测试重建表，不会连接或清理开发/正式数据库。
+原有业务单元测试使用隔离的 SQLite 内存库；pgvector 与知识库链路使用独立 PostgreSQL `sales_agent_test`，测试前会确认测试库存在并运行 Alembic，不会清理开发或正式数据库。可通过 `TEST_DATABASE_URL` 改用专用测试实例。
+
+## 企业知识库架构
+
+```text
+鉴权上传 -> UUID/租户目录存储 + SHA-256 -> processing job -> Redis
+    -> Celery worker -> parser -> chunker -> EmbeddingProvider
+    -> PostgreSQL vector(1536) + HNSW cosine index -> 引用检索
+```
+
+上传接口只安全保存文件、创建文档和任务记录并入队，不同步解析。worker 依次写入 `parsing`、`chunking`、`embedding`、`saving`、`completed` 和 0–100 进度。任务开启 late acknowledgement，且每次重新校验 `tenant_id + document_id + job_id`；成功任务可幂等重入，失败会保存结构化错误。管理员或经理可手动重新处理卡死/失败文档。
+
+PDF 按页提取并保留页码，无有效文本时返回 `OCR_REQUIRED`；DOCX 保留标题、段落和表格；Markdown 保留标题层级；XLSX 使用只读与缓存值模式并保留工作表/行号；CSV 识别常见编码和分隔符。工作簿、CSV 和 Office 解压体积均有上限。
+
+## Embedding 与检索
+
+- `test`：本地确定性、无网络的 1536 维测试向量，只验证链路，不代表真实语义质量。
+- `openai_compatible`：批量请求 OpenAI 兼容 `/embeddings` 端点，具有超时、有限重试、返回数量和维度校验。日志不输出 API Key 或文档正文。
+
+`APP_ENV=production` 时禁止 `test` Provider，正式 Provider 配置不完整时启动失败。检索为 PostgreSQL 内执行的 cosine distance 升序排序，对外分数按 `1 - distance` 限制到 0–1，再使用 `min_score` 过滤。查询向量每次只生成一次，仅检索当前租户下 active 知识库的 ready 文档，无足够相关结果时返回空数组。
+
+## 知识库 API
+
+- 知识库：`GET|POST /api/v1/knowledge/bases`、`GET|PUT|DELETE /api/v1/knowledge/bases/{id}`
+- 文档：`GET /api/v1/knowledge/documents`、`POST /api/v1/knowledge/documents/upload`、`GET|DELETE /api/v1/knowledge/documents/{id}`
+- 状态与文件：`GET .../{id}/status`、`GET .../{id}/download`、`POST .../{id}/reprocess`
+- 启停：`PATCH .../{id}/disable`、`PATCH .../{id}/enable`
+- 切片：`GET /api/v1/knowledge/documents/{id}/chunks`
+- 检索：`POST /api/v1/knowledge/search`
+
+admin 可管理知识库和文档；manager 可上传、下载、重新处理、查看切片和检索；sales 只能查看 ready 文档、下载和检索。后端为每个资源查询强制附带 JWT 的 `tenant_id`，跨租户统一返回 404。
 
 ## 多租户隔离原则
 

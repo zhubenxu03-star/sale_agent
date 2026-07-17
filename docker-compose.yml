@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: sales_agent
       POSTGRES_USER: postgres
@@ -17,6 +17,36 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - sales_agent_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/sales_agent
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
+      APP_ENV: ${APP_ENV:-development}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-test}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: 1536
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -26,11 +56,34 @@ services:
       JWT_ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 1440
       CORS_ORIGINS: http://localhost:3000
+      APP_ENV: ${APP_ENV:-development}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      KNOWLEDGE_STORAGE_PATH: /app/data/knowledge
+      KNOWLEDGE_MAX_FILE_SIZE_MB: 20
+      KNOWLEDGE_ALLOWED_EXTENSIONS: pdf,docx,txt,md,xlsx,csv
+      CHUNK_TARGET_SIZE: 600
+      CHUNK_OVERLAP: 100
+      CHUNK_MIN_SIZE: 80
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-test}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: 1536
+      EMBEDDING_BATCH_SIZE: 32
+      EMBEDDING_TIMEOUT_SECONDS: 30
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - sales_agent_knowledge_data:/app/data/knowledge
     healthcheck:
       test:
         [
@@ -45,5 +98,42 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  worker:
+    build:
+      context: ./backend
+    command: celery -A app.tasks.celery_app:celery_app worker --loglevel=INFO --concurrency=2
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/sales_agent
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-change-me}
+      APP_ENV: ${APP_ENV:-development}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      KNOWLEDGE_STORAGE_PATH: /app/data/knowledge
+      KNOWLEDGE_MAX_FILE_SIZE_MB: 20
+      KNOWLEDGE_ALLOWED_EXTENSIONS: pdf,docx,txt,md,xlsx,csv
+      CHUNK_TARGET_SIZE: 600
+      CHUNK_OVERLAP: 100
+      CHUNK_MIN_SIZE: 80
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-test}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: 1536
+      EMBEDDING_BATCH_SIZE: 32
+      EMBEDDING_TIMEOUT_SECONDS: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - sales_agent_knowledge_data:/app/data/knowledge
+    restart: unless-stopped
+
 volumes:
   sales_agent_postgres_data:
+  sales_agent_redis_data:
+  sales_agent_knowledge_data:
