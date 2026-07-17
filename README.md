@@ -1,6 +1,6 @@
 # sales-agent
 
-面向 B 端销售团队的销转智能体工作台前端演示项目。项目当前使用本地 Mock 数据，无需后端服务即可运行。
+面向 B 端销售团队的销转智能体项目。仓库包含已完成的 Next.js 工作台原型，以及独立的 FastAPI 多租户后端基础服务。
 
 ## 技术栈
 
@@ -8,6 +8,9 @@
 - React 19
 - TypeScript
 - Tailwind CSS 4
+- Python 3.12 / FastAPI
+- SQLAlchemy 2 / PostgreSQL / Alembic
+- JWT / pwdlib / pytest
 
 ## 本地运行
 
@@ -49,6 +52,11 @@ src/
 │   └── Workflow.tsx
 ├── data/                # 本地 Mock 数据
 └── types/               # TypeScript 类型定义
+backend/
+├── app/                 # FastAPI 应用、模型和 API
+├── alembic/             # PostgreSQL 迁移
+└── tests/               # 后端自动化测试
+docker-compose.yml       # PostgreSQL + 后端服务
 ```
 
 ## 交互说明
@@ -59,3 +67,18 @@ src/
 - “一键复制”复制当前建议回复并展示完成状态。
 
 页面已针对 1440×900 与 1920×1080 桌面分辨率进行布局校验。
+
+## 后端快速启动
+
+推荐使用 Docker：
+
+```bash
+docker compose up --build -d
+```
+
+启动后访问：
+
+- 健康检查：<http://localhost:8000/health>
+- Swagger：<http://localhost:8000/docs>
+
+本地 Python 安装、环境变量、迁移、测试命令和多租户隔离原则详见 [`backend/README.md`](backend/README.md)。前端开发服务继续单独执行 `pnpm dev`。
