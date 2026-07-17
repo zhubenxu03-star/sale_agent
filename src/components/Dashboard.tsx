@@ -1,0 +1,252 @@
+"use client";
+
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { ChampionPanel } from "@/components/ChampionPanel";
+import { ChatPanel } from "@/components/ChatPanel";
+import { ConversationDialog } from "@/components/conversations/ConversationDialog";
+import { ConfirmDialog } from "@/components/customers/ConfirmDialog";
+import { CustomerFormDialog } from "@/components/customers/CustomerFormDialog";
+import { CustomerToolbar } from "@/components/customers/CustomerToolbar";
+import { CustomerPanel } from "@/components/CustomerPanel";
+import { Header } from "@/components/Header";
+import { KnowledgePanel } from "@/components/KnowledgePanel";
+import { MetricCard } from "@/components/MetricCard";
+import { useToast } from "@/components/providers/AppProviders";
+import { Sidebar } from "@/components/Sidebar";
+import { Workflow } from "@/components/Workflow";
+import { useCurrentUser } from "@/hooks/useAuth";
+import { useConversations, useCreateConversation } from "@/hooks/useConversations";
+import {
+  useCreateCustomer,
+  useCustomer,
+  useCustomers,
+  useDeleteCustomer,
+  useUpdateCustomer,
+} from "@/hooks/useCustomers";
+import { ApiError } from "@/lib/api/client";
+import type { Metric } from "@/types";
+import type { Customer, CustomerInput } from "@/types/api";
+
+function customerMetrics(customer?: Customer): Metric[] {
+  const probability =
+    customer?.deal_probability === null || customer?.deal_probability === undefined
+      ? undefined
+      : Number(customer.deal_probability);
+  const amount =
+    customer?.expected_amount === null || customer?.expected_amount === undefined
+      ? "暂无"
+      : `¥${Number(customer.expected_amount).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
+  return [
+    {
+      label: "客户阶段",
+      value: customer?.stage || "暂无",
+      helper: customer ? "来自客户真实资料" : "请选择客户",
+      tone: "navy",
+    },
+    {
+      label: "成交概率",
+      value: probability === undefined ? "暂无" : `${probability}%`,
+      helper: probability === undefined ? "尚未填写" : "业务人员录入",
+      tone: "success",
+      progress: probability,
+    },
+    {
+      label: "预计成交日期",
+      value: customer?.expected_close_date || "暂无",
+      helper: "真实跟进计划",
+      tone: "neutral",
+    },
+    {
+      label: "预计成交金额",
+      value: amount,
+      helper: "AI 功能尚未启用",
+      tone: "gold",
+    },
+  ];
+}
+
+export function Dashboard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [collapsed, setCollapsed] = useState(false);
+  const [search, setSearch] = useState("");
+  const [customerDialog, setCustomerDialog] = useState<"create" | "edit" | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [conversationDialog, setConversationDialog] = useState(false);
+  const { showToast } = useToast();
+  const identity = useCurrentUser();
+  const customersQuery = useCustomers(search);
+  const customers = useMemo(() => customersQuery.data?.items || [], [customersQuery.data]);
+  const requestedCustomerId = searchParams.get("customer") || undefined;
+  const selectedCustomerId = requestedCustomerId || customers[0]?.id;
+  const customerQuery = useCustomer(selectedCustomerId);
+  const conversationsQuery = useConversations(customerQuery.data?.id);
+  const conversations = useMemo(
+    () => conversationsQuery.data?.items || [],
+    [conversationsQuery.data],
+  );
+  const requestedConversationId = searchParams.get("conversation") || undefined;
+  const conversation =
+    conversations.find((item) => item.id === requestedConversationId) || conversations[0];
+  const createCustomer = useCreateCustomer();
+  const updateCustomer = useUpdateCustomer(customerQuery.data?.id);
+  const deleteCustomer = useDeleteCustomer();
+  const createConversation = useCreateConversation(customerQuery.data?.id);
+
+  const setSelection = (customerId?: string, conversationId?: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (customerId) params.set("customer", customerId);
+    else params.delete("customer");
+    if (conversationId) params.set("conversation", conversationId);
+    else params.delete("conversation");
+    router.replace(`/?${params.toString()}`);
+  };
+
+  useEffect(() => {
+    if (!requestedCustomerId && customers[0]) setSelection(customers[0].id);
+    // URL is the source of truth; only missing selections are normalized.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedCustomerId, customers]);
+  useEffect(() => {
+    if (customerQuery.error instanceof ApiError && customerQuery.error.status === 404) {
+      setSelection(customers[0]?.id);
+      showToast("所选客户不存在，已恢复为有效客户", "info");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerQuery.error]);
+  useEffect(() => {
+    if (conversation && conversation.id !== requestedConversationId) {
+      setSelection(selectedCustomerId, conversation.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?.id, requestedConversationId]);
+
+  if (!identity.data) return null;
+  const metrics = customerMetrics(customerQuery.data);
+  const handleCustomerSubmit = async (payload: CustomerInput) => {
+    try {
+      const saved =
+        customerDialog === "edit"
+          ? await updateCustomer.mutateAsync(payload)
+          : await createCustomer.mutateAsync(payload);
+      setCustomerDialog(null);
+      setSelection(saved.id);
+      showToast(customerDialog === "edit" ? "客户资料已更新" : "客户创建成功", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "客户保存失败", "error");
+    }
+  };
+  const handleDelete = async () => {
+    if (!customerQuery.data) return;
+    try {
+      await deleteCustomer.mutateAsync(customerQuery.data.id);
+      setDeleteDialog(false);
+      setSelection();
+      showToast("客户及关联会话已删除", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "客户删除失败", "error");
+    }
+  };
+  const handleCreateConversation = async (title: string) => {
+    try {
+      const created = await createConversation.mutateAsync(title);
+      setConversationDialog(false);
+      setSelection(selectedCustomerId, created.id);
+      showToast("会话创建成功", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "会话创建失败", "error");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[var(--background)]">
+      <Sidebar
+        identity={identity.data}
+        customers={customers}
+        selectedCustomerId={selectedCustomerId}
+        collapsed={collapsed}
+      />
+      <Header
+        identity={identity.data}
+        collapsed={collapsed}
+        onToggleSidebar={() => setCollapsed((value) => !value)}
+      />
+      <main
+        className={`mt-16 h-[calc(100vh-64px)] min-h-[736px] overflow-auto p-[18px] transition-[margin] 2xl:p-6 ${collapsed ? "ml-[72px]" : "ml-[220px]"}`}
+      >
+        <div className="mx-auto flex h-full min-w-[1000px] max-w-[1800px] flex-col gap-3.5 2xl:gap-4">
+          <CustomerToolbar
+            customers={customers}
+            selectedId={selectedCustomerId}
+            search={search}
+            loading={customersQuery.isPending}
+            onSearch={setSearch}
+            onSelect={(id) => setSelection(id)}
+            onCreate={() => setCustomerDialog("create")}
+          />
+          {customersQuery.isError && (
+            <div className="rounded-xl border border-[#E7C8C4] bg-[#FFF7F6] px-4 py-2 text-[10px] text-[#9A463D]">
+              {customersQuery.error instanceof Error ? customersQuery.error.message : "客户列表加载失败。"}
+              <button onClick={() => customersQuery.refetch()} className="ml-2 underline">
+                重试
+              </button>
+            </div>
+          )}
+          <section className="grid shrink-0 grid-cols-4 gap-3.5 2xl:gap-4" aria-label="客户关键指标">
+            {metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
+          </section>
+          <div className="grid min-h-[430px] flex-1 grid-cols-[minmax(0,1fr)_330px] gap-3.5 2xl:grid-cols-[minmax(0,1fr)_370px] 2xl:gap-4">
+            <ChatPanel
+              key={conversation?.id || "no-conversation"}
+              customer={customerQuery.data}
+              conversations={conversations}
+              conversation={conversation}
+              conversationsLoading={conversationsQuery.isPending && Boolean(customerQuery.data)}
+              conversationsError={conversationsQuery.error instanceof Error ? conversationsQuery.error : null}
+              onRetryConversations={() => { void conversationsQuery.refetch(); }}
+              onSelectConversation={(id) => setSelection(selectedCustomerId, id)}
+              onNewConversation={() => setConversationDialog(true)}
+            />
+            <aside className="chat-scroll grid min-h-0 grid-rows-[minmax(230px,1.35fr)_minmax(120px,.7fr)_minmax(120px,.7fr)] gap-3.5 overflow-y-auto 2xl:gap-4" aria-label="客户与知识辅助信息">
+              <CustomerPanel
+                customer={customerQuery.data}
+                loading={customerQuery.isPending && Boolean(selectedCustomerId)}
+                error={customerQuery.error}
+                onRetry={() => customerQuery.refetch()}
+                onEdit={() => setCustomerDialog("edit")}
+                onDelete={() => setDeleteDialog(true)}
+              />
+              <KnowledgePanel />
+              <ChampionPanel />
+            </aside>
+          </div>
+          <Workflow />
+        </div>
+      </main>
+      <CustomerFormDialog
+        open={Boolean(customerDialog)}
+        customer={customerDialog === "edit" ? customerQuery.data : undefined}
+        pending={createCustomer.isPending || updateCustomer.isPending}
+        onClose={() => setCustomerDialog(null)}
+        onSubmit={handleCustomerSubmit}
+      />
+      <ConfirmDialog
+        open={deleteDialog}
+        title="确认删除客户？"
+        description="该操作将物理删除客户及其关联的会话和消息，且无法撤销。"
+        pending={deleteCustomer.isPending}
+        onClose={() => setDeleteDialog(false)}
+        onConfirm={handleDelete}
+      />
+      {conversationDialog && (
+        <ConversationDialog
+          open
+          pending={createConversation.isPending}
+          onClose={() => setConversationDialog(false)}
+          onSubmit={handleCreateConversation}
+        />
+      )}
+    </div>
+  );
+}
