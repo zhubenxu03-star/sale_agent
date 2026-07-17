@@ -16,7 +16,7 @@ import { useToast } from "@/components/providers/AppProviders";
 import { Sidebar } from "@/components/Sidebar";
 import { Workflow } from "@/components/Workflow";
 import { useCurrentUser } from "@/hooks/useAuth";
-import { useConversations, useCreateConversation } from "@/hooks/useConversations";
+import { useConversations, useCreateConversation, useMessages } from "@/hooks/useConversations";
 import {
   useCreateCustomer,
   useCustomer,
@@ -89,6 +89,10 @@ export function Dashboard() {
   const requestedConversationId = searchParams.get("conversation") || undefined;
   const conversation =
     conversations.find((item) => item.id === requestedConversationId) || conversations[0];
+  const dashboardMessages = useMessages(conversation?.id);
+  const latestCustomerMessage = [...(dashboardMessages.data || [])]
+    .reverse()
+    .find((item) => item.sender_type === "customer")?.content;
   const createCustomer = useCreateCustomer();
   const updateCustomer = useUpdateCustomer(customerQuery.data?.id);
   const deleteCustomer = useDeleteCustomer();
@@ -217,7 +221,7 @@ export function Dashboard() {
                 onEdit={() => setCustomerDialog("edit")}
                 onDelete={() => setDeleteDialog(true)}
               />
-              <KnowledgePanel />
+              <KnowledgePanel latestCustomerMessage={latestCustomerMessage} />
               <ChampionPanel />
             </aside>
           </div>

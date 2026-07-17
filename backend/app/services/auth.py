@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.exceptions import AppException
 from app.core.security import hash_password, verify_password
+from app.models.knowledge import KnowledgeBase
 from app.models.tenant import Tenant, TenantStatus
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.auth import LoginRequest, RegisterTenantRequest
@@ -36,6 +37,14 @@ def register_tenant(db: Session, payload: RegisterTenantRequest) -> tuple[Tenant
             )
             db.add(user)
             db.flush()
+            db.add(
+                KnowledgeBase(
+                    tenant_id=tenant.id,
+                    name="企业知识库",
+                    description="企业产品、服务、价格、案例、交付和常见问题资料",
+                    created_by_user_id=user.id,
+                )
+            )
     except IntegrityError as exc:
         db.rollback()
         raise AppException(409, "企业编码或邮箱已存在", "REGISTER_CONFLICT") from exc
