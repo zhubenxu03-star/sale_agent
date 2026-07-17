@@ -129,3 +129,9 @@ pytest 使用独立的内存数据库，并为每个测试重建表，不会连�
 6. 数据库层为所有租户业务表建立 `tenant_id` 索引，并约束企业内邮箱唯一。
 
 当前隔离属于应用层行级隔离。后续进入高合规部署阶段时，可评估 PostgreSQL Row-Level Security 作为第二道防线。
+
+## 前端集成说明
+
+浏览器不会直接调用本服务，而是访问 Next.js 的同源 `/api` BFF。BFF 从 HttpOnly Cookie 读取 JWT 后再以 Bearer Token 转发；业务请求中的租户身份仍只由后端验证后的 JWT 决定。
+
+会话列表支持可选的 `customer_id` 查询参数。传入时会先确认客户属于当前租户，再同时按 `tenant_id` 与 `customer_id` 筛选；其他租户的客户统一返回 404。`owner_user_id` 如被指定，也必须属于当前租户。

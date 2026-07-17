@@ -39,8 +39,19 @@ def list_conversations(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status_filter: ConversationStatus | None = Query(default=None, alias="status"),
+    customer_id: UUID | None = Query(default=None),
 ) -> dict[str, object]:
     filters = [Conversation.tenant_id == current_user.tenant_id]
+    if customer_id is not None:
+        customer_exists = db.scalar(
+            select(Customer.id).where(
+                Customer.id == customer_id,
+                Customer.tenant_id == current_user.tenant_id,
+            )
+        )
+        if customer_exists is None:
+            raise AppException(404, "客户不存在", "CUSTOMER_NOT_FOUND")
+        filters.append(Conversation.customer_id == customer_id)
     if status_filter is not None:
         filters.append(Conversation.status == status_filter)
 

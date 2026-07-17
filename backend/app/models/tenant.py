@@ -33,6 +33,7 @@ class Tenant(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             native_enum=False,
             length=16,
             validate_strings=True,
+            values_callable=lambda enum: [member.value for member in enum],
         ),
         default=TenantStatus.ACTIVE,
         nullable=False,

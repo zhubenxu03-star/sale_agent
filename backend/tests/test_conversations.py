@@ -59,3 +59,30 @@ def test_messages_are_returned_in_created_at_order(client):
     response = client.get(f"/api/v1/conversations/{conversation_id}/messages", headers=headers)
     assert response.status_code == 200
     assert [item["content"] for item in response.json()["data"]] == expected
+
+
+def test_conversations_can_be_filtered_by_customer(client):
+    register_tenant(client, "alpha")
+    headers = auth_headers(client, "alpha")
+    first = create_customer(client, headers, name="客户甲")
+    second = create_customer(client, headers, name="客户乙")
+    first_conversation = create_conversation(client, headers, first["id"])
+    create_conversation(client, headers, second["id"])
+
+    response = client.get(
+        f"/api/v1/conversations?customer_id={first['id']}", headers=headers
+    )
+    assert response.status_code == 200
+    items = response.json()["data"]["items"]
+    assert [item["id"] for item in items] == [first_conversation["id"]]
+
+
+def test_tenant_cannot_filter_conversations_by_other_tenant_customer(client):
+    alpha_headers, beta_headers, _ = setup_tenant_conversations(client)
+    beta_customer = create_customer(client, beta_headers, name="企业B客户")
+    response = client.get(
+        f"/api/v1/conversations?customer_id={beta_customer['id']}",
+        headers=alpha_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "CUSTOMER_NOT_FOUND"

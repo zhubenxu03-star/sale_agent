@@ -76,3 +76,18 @@ def test_tenant_a_cannot_delete_tenant_b_customer(client):
         client.get(f"/api/v1/customers/{beta_customer['id']}", headers=beta_headers).status_code
         == 200
     )
+
+
+def test_owner_user_id_cannot_reference_another_tenant(client):
+    alpha_registration = register_tenant(client, "alpha")
+    beta_registration = register_tenant(client, "beta")
+    assert alpha_registration.status_code == 201
+    beta_user_id = beta_registration.json()["data"]["user"]["id"]
+
+    response = client.post(
+        "/api/v1/customers",
+        headers=auth_headers(client, "alpha"),
+        json={"name": "越权负责人客户", "owner_user_id": beta_user_id},
+    )
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INVALID_OWNER"

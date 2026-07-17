@@ -48,6 +48,7 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             native_enum=False,
             length=16,
             validate_strings=True,
+            values_callable=lambda enum: [member.value for member in enum],
         ),
         default=ConversationStatus.ACTIVE,
         nullable=False,
@@ -76,6 +77,7 @@ class Message(UUIDPrimaryKeyMixin, Base):
             native_enum=False,
             length=16,
             validate_strings=True,
+            values_callable=lambda enum: [member.value for member in enum],
         ),
         nullable=False,
     )
