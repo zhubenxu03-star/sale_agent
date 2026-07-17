@@ -65,4 +65,7 @@ class MessageOut(BaseModel):
     sender_type: SenderType
     content: str
     metadata_json: dict[str, Any] | None
+    generation_id: UUID | None
+    is_ai_generated: bool
+    is_user_edited: bool
     created_at: datetime

@@ -26,17 +26,11 @@ import {
 } from "@/hooks/useCustomers";
 import { ApiError } from "@/lib/api/client";
 import type { Metric } from "@/types";
-import type { Customer, CustomerInput } from "@/types/api";
+import type { Customer, CustomerInput, Generation } from "@/types/api";
 
-function customerMetrics(customer?: Customer): Metric[] {
-  const probability =
-    customer?.deal_probability === null || customer?.deal_probability === undefined
-      ? undefined
-      : Number(customer.deal_probability);
-  const amount =
-    customer?.expected_amount === null || customer?.expected_amount === undefined
-      ? "暂无"
-      : `¥${Number(customer.expected_amount).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}`;
+function customerMetrics(customer?: Customer, generation?: Generation | null): Metric[] {
+  const generated = generation?.result;
+  const probability = customer?.deal_probability == null ? undefined : Number(customer.deal_probability);
   return [
     {
       label: "客户阶段",
@@ -45,23 +39,24 @@ function customerMetrics(customer?: Customer): Metric[] {
       tone: "navy",
     },
     {
+      label: "生成置信度",
+      value: generated ? `${Math.round(generated.confidence * 100)}%` : "暂无",
+      helper: generated ? "模型输出可信程度，不代表客户意向分" : "等待生成回复",
+      tone: "success",
+      progress: generated ? Math.round(generated.confidence * 100) : undefined,
+    },
+    {
+      label: "推荐策略",
+      value: generated?.recommended_strategy || "暂无",
+      helper: generated ? "来自最新生成结果" : "等待智能体分析",
+      tone: "gold",
+    },
+    {
       label: "成交概率",
       value: probability === undefined ? "暂无" : `${probability}%`,
-      helper: probability === undefined ? "尚未填写" : "业务人员录入",
-      tone: "success",
-      progress: probability,
-    },
-    {
-      label: "预计成交日期",
-      value: customer?.expected_close_date || "暂无",
-      helper: "真实跟进计划",
+      helper: probability === undefined ? "尚未填写" : "业务人员录入，AI 不自动覆盖",
       tone: "neutral",
-    },
-    {
-      label: "预计成交金额",
-      value: amount,
-      helper: "AI 功能尚未启用",
-      tone: "gold",
+      progress: probability,
     },
   ];
 }
@@ -74,6 +69,7 @@ export function Dashboard() {
   const [customerDialog, setCustomerDialog] = useState<"create" | "edit" | null>(null);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [conversationDialog, setConversationDialog] = useState(false);
+  const [latestGeneration, setLatestGeneration] = useState<Generation | null>(null);
   const { showToast } = useToast();
   const identity = useCurrentUser();
   const customersQuery = useCustomers(search);
@@ -127,7 +123,7 @@ export function Dashboard() {
   }, [conversation?.id, requestedConversationId]);
 
   if (!identity.data) return null;
-  const metrics = customerMetrics(customerQuery.data);
+  const metrics = customerMetrics(customerQuery.data, latestGeneration);
   const handleCustomerSubmit = async (payload: CustomerInput) => {
     try {
       const saved =
@@ -211,6 +207,7 @@ export function Dashboard() {
               onRetryConversations={() => { void conversationsQuery.refetch(); }}
               onSelectConversation={(id) => setSelection(selectedCustomerId, id)}
               onNewConversation={() => setConversationDialog(true)}
+              onGeneration={setLatestGeneration}
             />
             <aside className="chat-scroll grid min-h-0 grid-rows-[minmax(230px,1.35fr)_minmax(120px,.7fr)_minmax(120px,.7fr)] gap-3.5 overflow-y-auto 2xl:gap-4" aria-label="客户与知识辅助信息">
               <CustomerPanel

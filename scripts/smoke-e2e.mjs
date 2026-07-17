@@ -99,17 +99,17 @@ try {
   await page.getByRole("button", { name: "创建会话" }).click();
   await page.getByLabel("选择会话").selectOption({ label: conversationTitle });
 
-  await page.getByLabel("客户消息").fill(customerMessage);
+  await page.locator("textarea").last().fill(customerMessage);
   await page.getByRole("button", { name: "保存客户消息" }).click();
   await page.getByText(customerMessage, { exact: true }).waitFor();
-  await page.getByRole("button", { name: "生成模拟回复" }).click();
-  await page.getByText("本地模拟回复，尚未接入大模型", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "生成回复" }).click();
+  await page.getByText(/推荐回复 · 生成置信度/).waitFor();
   await page.getByRole("button", { name: "保存到会话" }).click();
-  await page.getByText("本地模拟回复，尚未接入大模型", { exact: true }).waitFor({ state: "detached" });
+  await page.getByText("回复已保存到会话").waitFor();
 
   await page.reload();
   await page.getByText(customerMessage, { exact: true }).waitFor();
-  await page.getByText("模拟生成", { exact: true }).last().waitFor();
+  await page.getByText(/AI 生成 · 人工已确认/).last().waitFor();
   const noHorizontalOverflow1440 = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
   if (!noHorizontalOverflow1440) throw new Error("1440×900 出现页面级横向溢出");
   await mkdir(screenshotDir, { recursive: true });

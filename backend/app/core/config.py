@@ -40,6 +40,23 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 1536
     embedding_batch_size: int = 32
     embedding_timeout_seconds: int = 30
+    llm_provider: str = "test"
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = ""
+    llm_timeout_seconds: int = 60
+    llm_connect_timeout_seconds: int = 10
+    llm_max_retries: int = 2
+    llm_max_output_tokens: int = 1500
+    llm_temperature: float = 0.3
+    llm_stream_enabled: bool = True
+    agent_history_message_limit: int = 12
+    agent_retrieval_top_k: int = 6
+    agent_retrieval_min_score: float = 0.35
+    agent_max_knowledge_chars: int = 12_000
+    agent_max_custom_instruction_chars: int = 4_000
+    agent_request_timeout_seconds: int = 90
+    agent_max_concurrent_requests_per_user: int = 2
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
@@ -71,6 +88,12 @@ class Settings(BaseSettings):
                 [self.embedding_base_url, self.embedding_api_key, self.embedding_model]
             ):
                 raise ValueError("production embedding service configuration is incomplete")
+            if self.llm_provider == "test":
+                raise ValueError("production cannot use the deterministic test chat provider")
+            if self.llm_provider == "openai_compatible" and not all(
+                [self.llm_base_url, self.llm_api_key, self.llm_model]
+            ):
+                raise ValueError("production LLM service configuration is incomplete")
         return self
 
 

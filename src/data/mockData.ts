@@ -16,6 +16,8 @@ export const navItems: NavItem[] = [
   { label: "转化分析", icon: "chart" },
 ];
 
+navItems.splice(3, 0, { label: "智能体配置", icon: "brain" });
+
 export const recentCustomers: RecentCustomer[] = [
   { name: "周明远", company: "云启科技", active: true },
   { name: "林舒雅", company: "拓维零售" },

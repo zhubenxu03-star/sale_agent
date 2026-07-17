@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -83,6 +83,13 @@ class Message(UUIDPrimaryKeyMixin, Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    generation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("generation_records.id", ondelete="SET NULL"),
+        unique=True,
+        index=True,
+    )
+    is_ai_generated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_user_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.exceptions import AppException
 from app.core.security import hash_password, verify_password
+from app.models.agent import Agent, AgentConfig
 from app.models.knowledge import KnowledgeBase
 from app.models.tenant import Tenant, TenantStatus
 from app.models.user import User, UserRole, UserStatus
@@ -43,6 +44,29 @@ def register_tenant(db: Session, payload: RegisterTenantRequest) -> tuple[Tenant
                     name="企业知识库",
                     description="企业产品、服务、价格、案例、交付和常见问题资料",
                     created_by_user_id=user.id,
+                )
+            )
+            agent = Agent(
+                tenant_id=tenant.id,
+                name="销转智能体",
+                description="依据企业知识为销售提供可审计的回复建议",
+                is_default=True,
+                created_by_user_id=user.id,
+            )
+            db.add(agent)
+            db.flush()
+            db.add(
+                AgentConfig(
+                    tenant_id=tenant.id,
+                    agent_id=agent.id,
+                    identity_prompt=(
+                        "你是企业销转智能体。请依据提供的企业知识，输出专业、克制、"
+                        "可核验的销售建议，不得编造事实。"
+                    ),
+                    prohibited_claims=["未经依据不得承诺价格、折扣、交付、资质或效果"],
+                    human_handoff_rules=[
+                        "投诉退款、合同法律、特殊折扣、安全合规或客户要求人工时转人工"
+                    ],
                 )
             )
     except IntegrityError as exc:

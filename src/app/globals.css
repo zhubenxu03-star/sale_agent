@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+.form-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  padding: 9px 11px;
+  color: var(--text);
+  font-size: 11px;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--gold);
+}
+
+.form-input:disabled {
+  cursor: not-allowed;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
 :root {
   --navy: #162a46;
   --navy-deep: #102238;
