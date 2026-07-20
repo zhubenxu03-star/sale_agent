@@ -241,7 +241,7 @@ async function formalGenerateAndSave(page, ids) {
   );
   await page.getByRole("button", { name: "生成回复" }).click();
   await stream;
-  await page.getByText(/推荐回复 · 生成置信度/).waitFor({ timeout: 30_000 });
+  await page.getByText("AI 推荐回复", { exact: true }).waitFor({ timeout: 30_000 });
   const generationPage = await api(
     page,
     `/api/agent/generations?conversation_id=${ids.conversationId}&page_size=1`,
