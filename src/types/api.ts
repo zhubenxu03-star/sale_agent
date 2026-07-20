@@ -149,6 +149,7 @@ export interface AgentOutput {
   risk_flags: AgentRiskFlag[];
   confidence: number;
   citations: AgentCitation[];
+  champion_methods_used?: { strategy_key: string; purpose: string }[];
 }
 
 export interface GenerationSource {
@@ -185,8 +186,19 @@ export interface Generation {
   error_code: string | null;
   error_message: string | null;
   sources: GenerationSource[];
+  champion_sources?: GenerationChampionSource[];
   created_at: string;
   completed_at: string | null;
+}
+
+export interface GenerationChampionSource {
+  strategy_key: string;
+  title_snapshot: string;
+  card_type: string;
+  strategy_snapshot: string;
+  reply_snapshot: string;
+  retrieval_score: number;
+  used_in_strategy: boolean;
 }
 
 export interface AgentServiceStatus {
@@ -216,4 +228,14 @@ export interface AgentConfig {
   custom_instructions: string | null;
   version: number;
   updated_at: string;
+  champion_enabled: boolean;
+  champion_top_k: number;
+  champion_min_score: number;
+  champion_industry_weight: number;
+  champion_stage_weight: number;
+  champion_success_weight: number;
+  champion_admin_score_weight: number;
+  champion_semantic_weight: number;
+  champion_prefer_tenant: boolean;
+  champion_allow_general_generation: boolean;
 }

@@ -19,11 +19,13 @@ from app.models.agent import (
     GenerationSource,
     GenerationStatus,
 )
+from app.models.champion import GenerationChampionSource
 from app.models.conversation import Conversation, Message, SenderType
 from app.models.customer import Customer
 from app.models.knowledge import KnowledgeBase, KnowledgeBaseStatus
 from app.models.user import User
 from app.schemas.agent import AgentOutput, GenerationOut, GenerationRequest, GenerationSourceOut
+from app.schemas.champion import ChampionSearchRequest
 from app.schemas.knowledge import KnowledgeSearchRequest
 from app.services.agent.concurrency import GenerationLease
 from app.services.agent.prompt_builder import (
@@ -33,6 +35,7 @@ from app.services.agent.prompt_builder import (
     build_repair_prompt,
 )
 from app.services.agent.safety import apply_safety_rules, validate_citations
+from app.services.champion.retrieval import search_champion
 from app.services.knowledge.retrieval import search_knowledge
 from app.services.llm import get_chat_provider
 from app.services.llm.base import ChatProvider
@@ -109,6 +112,22 @@ async def generate_reply(
                         "generation_id": str(record.id),
                     },
                 )
+            champion_sources = _retrieve_champion_sources(
+                db, current_user, customer, config, record, source_message.content
+            )
+            if progress:
+                progress(
+                    "champion_retrieval_started",
+                    {"message": "正在检索已审核销冠经验", "generation_id": str(record.id)},
+                )
+                progress(
+                    "champion_retrieval_completed",
+                    {"message": f"已匹配 {len(champion_sources)} 条销冠经验", "count": len(champion_sources), "generation_id": str(record.id)},
+                )
+                progress(
+                    "champion_sources",
+                    {"sources": [{"strategy_key": source.strategy_key, "title": source.title_snapshot, "score": source.retrieval_score} for source in champion_sources], "generation_id": str(record.id)},
+                )
             history = _history(db, conversation.id, current_user.tenant_id)
             prompt = build_prompt(
                 PromptContext(
@@ -118,6 +137,7 @@ async def generate_reply(
                     sources=sources,
                     customer_message=source_message.content,
                     mode=payload.mode,
+                    champion_sources=_champion_cards_for_prompt(db, champion_sources),
                 )
             )
             record.status = GenerationStatus.GENERATING
@@ -143,12 +163,29 @@ async def generate_reply(
                     [source_message.content, *(source.content_snapshot for source in sources)]
                 ),
             )
+            champion_risks = [
+                risk
+                for source in _champion_cards_for_prompt(db, champion_sources)
+                for risk in (source.risk_notes or [])
+            ]
+            if champion_risks:
+                output.risk_flags = list(dict.fromkeys([*output.risk_flags, "DISCOUNT_APPROVAL_REQUIRED"]))
+                if not output.need_human and any("承诺" in risk or "折扣" in risk or "价格" in risk for risk in champion_risks):
+                    output.need_human = True
+                    output.human_reason = "销冠经验包含需要人工确认的风险提示"
             if progress:
                 progress(
                     "validating",
                     {"message": "正在校验引用与风险", "generation_id": str(record.id)},
                 )
             used_keys = {citation.citation_key for citation in output.citations}
+            valid_strategy_keys = {source.strategy_key for source in champion_sources}
+            output.champion_methods_used = [
+                method for method in output.champion_methods_used if method.strategy_key in valid_strategy_keys
+            ]
+            used_strategy_keys = {method.strategy_key for method in output.champion_methods_used}
+            for source in champion_sources:
+                source.used_in_strategy = source.strategy_key in used_strategy_keys
             for source in sources:
                 source.used_in_reply = source.citation_key in used_keys
             record.status = GenerationStatus.COMPLETED
@@ -315,6 +352,62 @@ def _retrieve_sources(
     return sources
 
 
+def _retrieve_champion_sources(
+    db: Session,
+    user: User,
+    customer: Customer,
+    config: AgentConfig,
+    record: GenerationRecord,
+    customer_message: str,
+) -> list[GenerationChampionSource]:
+    if not config.champion_enabled:
+        return []
+    query = " ".join(
+        [customer_message, *(customer.objections or [])[:2], *(customer.core_needs or [])[:2], str(customer.stage or "")]
+    )[:4000]
+    results = search_champion(
+        db,
+        user.tenant_id,
+        user.id,
+        ChampionSearchRequest(
+            query=query,
+            customer_id=customer.id,
+            conversation_id=record.conversation_id,
+            industry=customer.industry,
+            sales_stage=str(customer.stage or ""),
+            top_k=config.champion_top_k,
+            min_score=config.champion_min_score,
+        ),
+        config,
+    )
+    sources: list[GenerationChampionSource] = []
+    for result in results:
+        source = GenerationChampionSource(
+            tenant_id=user.tenant_id,
+            generation_id=record.id,
+            champion_card_id=result.id,
+            strategy_key=result.strategy_key,
+            title_snapshot=result.title,
+            card_type=result.card_type.value if hasattr(result.card_type, "value") else str(result.card_type),
+            strategy_snapshot=result.strategy_summary,
+            reply_snapshot=result.salesperson_reply,
+            retrieval_score=result.final_score,
+        )
+        db.add(source)
+        sources.append(source)
+    db.commit()
+    return sources
+
+
+def _champion_cards_for_prompt(db: Session, sources: list[GenerationChampionSource]) -> list[object]:
+    from app.models.champion import ChampionCard
+
+    ids = [source.champion_card_id for source in sources if source.champion_card_id]
+    if not ids:
+        return []
+    return list(db.scalars(select(ChampionCard).where(ChampionCard.id.in_(ids))))
+
+
 def _history(db: Session, conversation_id: UUID, tenant_id: UUID) -> list[Message]:
     limit = get_settings().agent_history_message_limit
     messages = list(
@@ -331,7 +424,7 @@ def _history(db: Session, conversation_id: UUID, tenant_id: UUID) -> list[Messag
 def _record_by_request(db: Session, tenant_id: UUID, request_id: str) -> GenerationRecord | None:
     return db.scalar(
         select(GenerationRecord)
-        .options(selectinload(GenerationRecord.sources))
+        .options(selectinload(GenerationRecord.sources), selectinload(GenerationRecord.champion_sources))
         .where(GenerationRecord.tenant_id == tenant_id, GenerationRecord.request_id == request_id)
     )
 
@@ -339,7 +432,7 @@ def _record_by_request(db: Session, tenant_id: UUID, request_id: str) -> Generat
 def _record_or_404(db: Session, tenant_id: UUID, record_id: UUID) -> GenerationRecord:
     record = db.scalar(
         select(GenerationRecord)
-        .options(selectinload(GenerationRecord.sources))
+        .options(selectinload(GenerationRecord.sources), selectinload(GenerationRecord.champion_sources))
         .where(GenerationRecord.id == record_id, GenerationRecord.tenant_id == tenant_id)
     )
     if record is None:
@@ -359,6 +452,7 @@ def _mark_failed(
 
 
 def generation_out(record: GenerationRecord) -> GenerationOut:
+    champion_sources = list(record.champion_sources)
     return GenerationOut(
         id=record.id,
         request_id=record.request_id,
@@ -393,6 +487,18 @@ def generation_out(record: GenerationRecord) -> GenerationOut:
                 document_available=item.document_id is not None,
             )
             for item in record.sources
+        ],
+        champion_sources=[
+            {
+                "strategy_key": item.strategy_key,
+                "title_snapshot": item.title_snapshot,
+                "card_type": item.card_type,
+                "strategy_snapshot": item.strategy_snapshot,
+                "reply_snapshot": item.reply_snapshot,
+                "retrieval_score": item.retrieval_score,
+                "used_in_strategy": item.used_in_strategy,
+            }
+            for item in champion_sources
         ],
         created_at=record.created_at,
         completed_at=record.completed_at,

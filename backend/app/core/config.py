@@ -57,6 +57,20 @@ class Settings(BaseSettings):
     agent_max_custom_instruction_chars: int = 4_000
     agent_request_timeout_seconds: int = 90
     agent_max_concurrent_requests_per_user: int = 2
+    champion_storage_path: str = str(BACKEND_DIR / "data" / "champion")
+    champion_max_file_size_mb: int = 20
+    champion_allowed_extensions: str = "txt,md,csv,xlsx,json,docx"
+    champion_session_gap_minutes: int = 1440
+    champion_max_messages_per_conversation: int = 300
+    champion_max_conversations_per_source: int = 10_000
+    champion_extractor_provider: str = "test"
+    champion_extraction_model: str = ""
+    champion_extraction_timeout_seconds: int = 90
+    champion_extraction_max_retries: int = 2
+    champion_max_input_chars: int = 20_000
+    champion_max_cards_per_conversation: int = 20
+    champion_duplicate_score: float = 0.92
+    champion_preview_records: int = 30
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
@@ -77,6 +91,14 @@ class Settings(BaseSettings):
             if item.strip()
         }
 
+    @property
+    def champion_extension_set(self) -> set[str]:
+        return {
+            item.strip().lower().lstrip(".")
+            for item in self.champion_allowed_extensions.split(",")
+            if item.strip()
+        }
+
     @model_validator(mode="after")
     def validate_embedding_configuration(self) -> "Settings":
         if self.embedding_dimensions != 1536:
@@ -94,6 +116,16 @@ class Settings(BaseSettings):
                 [self.llm_base_url, self.llm_api_key, self.llm_model]
             ):
                 raise ValueError("production LLM service configuration is incomplete")
+            if self.champion_extractor_provider == "test":
+                raise ValueError("production cannot use the deterministic champion extractor")
+            if self.champion_extractor_provider == "llm" and not (
+                self.champion_extraction_model or self.llm_model
+            ):
+                raise ValueError("production champion extraction model is not configured")
+        if self.champion_extractor_provider not in {"test", "llm"}:
+            raise ValueError("CHAMPION_EXTRACTOR_PROVIDER must be test or llm")
+        if not 0 <= self.champion_duplicate_score <= 1:
+            raise ValueError("CHAMPION_DUPLICATE_SCORE must be between 0 and 1")
         return self
 
 

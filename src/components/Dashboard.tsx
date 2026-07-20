@@ -219,7 +219,7 @@ export function Dashboard() {
                 onDelete={() => setDeleteDialog(true)}
               />
               <KnowledgePanel latestCustomerMessage={latestCustomerMessage} />
-              <ChampionPanel />
+              <ChampionPanel latestCustomerMessage={latestCustomerMessage} customer={customerQuery.data} />
             </aside>
           </div>
           <Workflow />

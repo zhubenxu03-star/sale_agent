@@ -6,7 +6,7 @@ celery_app = Celery(
     "sales_agent",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.knowledge_tasks"],
+    include=["app.tasks.knowledge_tasks", "app.tasks.champion_tasks"],
 )
 celery_app.conf.update(
     task_track_started=True,

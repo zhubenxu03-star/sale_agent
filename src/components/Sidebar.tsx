@@ -61,8 +61,10 @@ export function Sidebar({
                 ? "/settings/agent"
                 : item.label === "销转工作台"
                 ? "/"
-                : item.label === "知识库管理"
+                  : item.label === "知识库管理"
                   ? "/knowledge"
+                  : item.label === "销冠知识库"
+                    ? "/champion"
                   : null;
             return href ? (
               <Link

@@ -96,6 +96,19 @@ services:
       AGENT_MAX_CUSTOM_INSTRUCTION_CHARS: ${AGENT_MAX_CUSTOM_INSTRUCTION_CHARS:-4000}
       AGENT_REQUEST_TIMEOUT_SECONDS: ${AGENT_REQUEST_TIMEOUT_SECONDS:-90}
       AGENT_MAX_CONCURRENT_REQUESTS_PER_USER: ${AGENT_MAX_CONCURRENT_REQUESTS_PER_USER:-2}
+      CHAMPION_STORAGE_PATH: /app/data/champion
+      CHAMPION_MAX_FILE_SIZE_MB: ${CHAMPION_MAX_FILE_SIZE_MB:-20}
+      CHAMPION_ALLOWED_EXTENSIONS: ${CHAMPION_ALLOWED_EXTENSIONS:-txt,md,csv,xlsx,json,docx}
+      CHAMPION_SESSION_GAP_MINUTES: ${CHAMPION_SESSION_GAP_MINUTES:-1440}
+      CHAMPION_MAX_MESSAGES_PER_CONVERSATION: ${CHAMPION_MAX_MESSAGES_PER_CONVERSATION:-300}
+      CHAMPION_MAX_CONVERSATIONS_PER_SOURCE: ${CHAMPION_MAX_CONVERSATIONS_PER_SOURCE:-10000}
+      CHAMPION_EXTRACTOR_PROVIDER: ${CHAMPION_EXTRACTOR_PROVIDER:-test}
+      CHAMPION_EXTRACTION_MODEL: ${CHAMPION_EXTRACTION_MODEL:-}
+      CHAMPION_EXTRACTION_TIMEOUT_SECONDS: ${CHAMPION_EXTRACTION_TIMEOUT_SECONDS:-90}
+      CHAMPION_EXTRACTION_MAX_RETRIES: ${CHAMPION_EXTRACTION_MAX_RETRIES:-2}
+      CHAMPION_MAX_INPUT_CHARS: ${CHAMPION_MAX_INPUT_CHARS:-20000}
+      CHAMPION_MAX_CARDS_PER_CONVERSATION: ${CHAMPION_MAX_CARDS_PER_CONVERSATION:-20}
+      CHAMPION_DUPLICATE_SCORE: ${CHAMPION_DUPLICATE_SCORE:-0.92}
     ports:
       - "8000:8000"
     depends_on:
@@ -107,6 +120,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - sales_agent_knowledge_data:/app/data/knowledge
+      - sales_agent_champion_data:/app/data/champion
     healthcheck:
       test:
         [
@@ -149,6 +163,9 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-}
+      CHAMPION_STORAGE_PATH: /app/data/champion
+      CHAMPION_EXTRACTOR_PROVIDER: ${CHAMPION_EXTRACTOR_PROVIDER:-test}
+      CHAMPION_EXTRACTION_MODEL: ${CHAMPION_EXTRACTION_MODEL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,9 +175,11 @@ services:
         condition: service_completed_successfully
     volumes:
       - sales_agent_knowledge_data:/app/data/knowledge
+      - sales_agent_champion_data:/app/data/champion
     restart: unless-stopped
 
 volumes:
   sales_agent_postgres_data:
   sales_agent_redis_data:
   sales_agent_knowledge_data:
+  sales_agent_champion_data:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -22,6 +22,9 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+
+if TYPE_CHECKING:
+    from app.models.champion import GenerationChampionSource
 
 
 def enum_column(enum: type[StrEnum], name: str) -> SAEnum:
@@ -118,6 +121,20 @@ class AgentConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prohibited_claims: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     human_handoff_rules: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     custom_instructions: Mapped[str | None] = mapped_column(Text)
+    champion_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    champion_top_k: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+    champion_min_score: Mapped[float] = mapped_column(Float, default=0.35, nullable=False)
+    champion_industry_weight: Mapped[float] = mapped_column(Float, default=0.15, nullable=False)
+    champion_stage_weight: Mapped[float] = mapped_column(Float, default=0.15, nullable=False)
+    champion_success_weight: Mapped[float] = mapped_column(Float, default=0.10, nullable=False)
+    champion_admin_score_weight: Mapped[float] = mapped_column(
+        Float, default=0.10, nullable=False
+    )
+    champion_semantic_weight: Mapped[float] = mapped_column(Float, default=0.50, nullable=False)
+    champion_prefer_tenant: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    champion_allow_general_generation: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     agent: Mapped[Agent] = relationship(back_populates="config")
 
@@ -181,6 +198,9 @@ class GenerationRecord(UUIDPrimaryKeyMixin, Base):
         back_populates="generation", cascade="all, delete-orphan"
     )
     feedback: Mapped[list[GenerationFeedback]] = relationship(
+        back_populates="generation", cascade="all, delete-orphan"
+    )
+    champion_sources: Mapped[list[GenerationChampionSource]] = relationship(
         back_populates="generation", cascade="all, delete-orphan"
     )
 

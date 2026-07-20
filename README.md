@@ -154,3 +154,10 @@ pnpm test:e2e
 开发环境默认使用确定性测试向量，页面会显示明确警告，仅用于验证数据链路。生产环境必须设置 `EMBEDDING_PROVIDER=openai_compatible` 及有效的服务地址、密钥和模型；配置缺失时应用拒绝启动，不会静默降级到测试向量。
 
 Docker Compose 使用独立的 `migrate` 一次性服务执行 Alembic，`backend` 和 `worker` 在迁移成功后启动；常规容器重启不会重复执行迁移命令。Redis、PostgreSQL 和知识文件均使用持久化 volume。
+## Stage 6：销冠知识库与双路检索
+
+本阶段在 `feat/champion-knowledge-base` 分支实现销冠聊天记录导入、脱敏、切片、结构化抽取、人工审核、去重、向量化和检索。支持 TXT、MD、CSV、XLSX、JSON、DOCX；原始文件按租户隔离保存，默认处理成功后删除原文。
+
+后端接口统一位于 `/api/v1/champion`，前端通过 `/api/champion/*` BFF 访问。管理员/经理负责导入和审核，销售只读已审批卡片。业务请求不接受 `tenant_id`，租户始终由 JWT 注入；跨租户资源统一返回 404。销冠知识仅作为内部方法（S）注入提示词，企业知识（K）仍只承载事实，最终回复不会把内部方法泄露给客户。
+
+新增迁移 `20260717_0004_champion_knowledge`，包含 `champion_sources`、`champion_import_jobs`、`champion_conversations`、`champion_messages`、`champion_cards`、`champion_card_versions`、`champion_card_feedback`、`champion_retrieval_logs`、`generation_champion_sources`，并扩展智能体配置。详细接口、权限、脱敏规则、Celery/Redis 处理和测试命令见 [backend/README.md](backend/README.md)。
