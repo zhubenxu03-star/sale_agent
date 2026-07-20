@@ -5,6 +5,7 @@ def test_health_check_reports_database_connection(client):
         "status": "ok",
         "service": "sales-agent-api",
         "database": "connected",
+        "redis": "connected",
     }
 
 

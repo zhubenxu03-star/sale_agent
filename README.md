@@ -1,5 +1,21 @@
 # sales-agent
 
+## 第五阶段：知识增强销转回复
+
+当前版本已接通后端销转智能体生成链路。浏览器只访问 Next.js BFF，JWT 仍保存在 HttpOnly Cookie 中，模型地址与 API Key 仅存在于后端环境变量。生成前由后端按当前 JWT 的 `tenant_id` 检索企业知识，模型只能引用本次实际检索得到的 `K1`、`K2` 等编号；最终结果经 Pydantic 结构校验、引用校验和人工接管规则复核后才展示。
+
+工作台支持 SSE 进度、结构化客户分析、推荐回复编辑、引用快照、风险提示、人工审核确认、保存到会话以及点赞/点踩。`/settings/agent` 提供企业级回复风格、检索参数和安全规则配置。测试模式会明确显示警告，生产环境禁止 `LLM_PROVIDER=test`。
+
+模型配置参见 [backend/.env.example](backend/.env.example)。本地无模型密钥时使用确定性测试 Provider 验证完整流程；正式联调将 `LLM_PROVIDER` 改为 `openai_compatible`，并配置 `LLM_BASE_URL`、`LLM_API_KEY` 与 `LLM_MODEL`。模型服务不可用不会影响 `/health`，能力状态单独通过 `/api/v1/agent/status` 查询。
+
+新增检查命令：
+
+```bash
+pnpm test:agent-e2e
+cd backend
+pytest tests/test_agent.py tests/test_knowledge_postgres.py
+```
+
 面向 B 端销售团队的多租户销转智能工作台。当前版本已完成 Next.js 工作台、FastAPI 后端基础，以及企业注册、登录、客户、会话和消息的真实数据链路。
 
 当前已完成企业知识库的文件上传、异步解析、切片、Embedding、pgvector 检索和工作台手动检索链路。回复生成仍为明确标记的本地模拟，不调用大语言模型；销冠知识库尚未开放。

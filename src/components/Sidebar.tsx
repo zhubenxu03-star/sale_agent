@@ -57,7 +57,9 @@ export function Sidebar({
             );
             const className = `flex h-11 w-full items-center rounded-xl text-[13px] transition ${collapsed ? "justify-center px-0" : "gap-3 px-3"} ${active ? "bg-white/[0.11] font-medium text-white shadow-[inset_2px_0_0_var(--gold)]" : "text-white/62 hover:bg-white/[0.06] hover:text-white"}`;
             const href =
-              item.label === "销转工作台"
+              item.label === "智能体配置"
+                ? "/settings/agent"
+                : item.label === "销转工作台"
                 ? "/"
                 : item.label === "知识库管理"
                   ? "/knowledge"

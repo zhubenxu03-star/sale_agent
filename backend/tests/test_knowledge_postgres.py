@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.db.session import get_db
 from app.main import app
+from app.models.agent import GenerationRecord
 from app.models.knowledge import (
     DocumentStatus,
     KnowledgeBase,
@@ -37,6 +38,7 @@ from app.services.knowledge.embeddings import (
     EmbeddingProvider,
 )
 from app.services.knowledge.processing import process_knowledge_document
+from tests.helpers import auth_headers, create_conversation, create_customer, register_tenant
 
 POSTGRES_URL = os.getenv(
     "TEST_DATABASE_URL",
@@ -766,3 +768,69 @@ def test_scanned_pdf_processing_exposes_clear_failure(postgres_client, tmp_path:
         headers=auth(seed),
     )
     assert status_response.json()["data"]["status"] == "failed"
+
+
+def test_full_agent_generation_idempotency_sse_and_persistence(postgres_client) -> None:
+    client, factory = postgres_client
+    assert register_tenant(client, "agent-flow").status_code == 201
+    headers = auth_headers(client, "agent-flow")
+    customer = create_customer(client, headers, name="生成流程客户")
+    conversation = create_conversation(client, headers, customer["id"])
+    source = client.post(
+        f"/api/v1/conversations/{conversation['id']}/messages",
+        headers=headers,
+        json={"sender_type": "customer", "content": "请告诉我具体价格和折扣"},
+    ).json()["data"]
+    agent = client.get("/api/v1/agents/default", headers=headers).json()["data"]
+    payload = {
+        "request_id": f"agent-{uuid4()}",
+        "agent_id": agent["id"],
+        "customer_id": customer["id"],
+        "conversation_id": conversation["id"],
+        "source_message_id": source["id"],
+        "mode": "standard",
+    }
+    generated = client.post("/api/v1/agent/generate", headers=headers, json=payload)
+    assert generated.status_code == 200, generated.text
+    data = generated.json()["data"]
+    assert data["status"] == "completed"
+    assert data["total_tokens"] > 0
+    assert "NO_RELIABLE_KNOWLEDGE" in data["result"]["risk_flags"]
+    assert data["need_human"] is True
+
+    duplicate = client.post("/api/v1/agent/generate", headers=headers, json=payload)
+    assert duplicate.status_code == 200
+    assert duplicate.json()["data"]["id"] == data["id"]
+    with factory() as db:
+        assert len(list(db.scalars(select(GenerationRecord)))) == 1
+
+    stream_payload = {**payload, "request_id": f"stream-{uuid4()}"}
+    streamed = client.post("/api/v1/agent/generate-stream", headers=headers, json=stream_payload)
+    assert streamed.status_code == 200
+    text_body = streamed.text
+    order = [
+        text_body.index("event: analyzing"),
+        text_body.index("event: retrieving"),
+        text_body.index("event: sources"),
+        text_body.index("event: generating"),
+        text_body.index("event: validating"),
+        text_body.index("event: completed"),
+    ]
+    assert order == sorted(order)
+    assert "event: reply_delta" in text_body
+    assert text_body.index("event: reply_delta") < text_body.index("event: completed")
+
+    blocked = client.post(
+        f"/api/v1/agent/generations/{data['id']}/save-message",
+        headers=headers,
+        json={"reply_text": data["reply_text"], "confirmed_human_review": False},
+    )
+    assert blocked.status_code == 409
+    saved = client.post(
+        f"/api/v1/agent/generations/{data['id']}/save-message",
+        headers=headers,
+        json={"reply_text": f"{data['reply_text']}（人工已核验）", "confirmed_human_review": True},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["data"]["is_ai_generated"] is True
+    assert saved.json()["data"]["is_user_edited"] is True

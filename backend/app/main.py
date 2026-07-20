@@ -1,6 +1,8 @@
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from redis import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -39,8 +41,21 @@ def health(db: Session = Depends(get_db)):
                 "database": "unavailable",
             },
         )
+    try:
+        Redis.from_url(settings.redis_url, socket_connect_timeout=1).ping()
+    except RedisError:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "service": settings.app_name,
+                "database": "connected",
+                "redis": "unavailable",
+            },
+        )
     return {
         "status": "ok",
         "service": settings.app_name,
         "database": "connected",
+        "redis": "connected",
     }

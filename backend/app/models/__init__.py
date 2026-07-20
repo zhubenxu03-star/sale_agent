@@ -1,3 +1,16 @@
+from app.models.agent import (
+    Agent,
+    AgentConfig,
+    AgentStatus,
+    FeedbackRating,
+    GenerationFeedback,
+    GenerationRecord,
+    GenerationSource,
+    GenerationStatus,
+    ReplyLength,
+    ReplyStyle,
+    SalesAggressiveness,
+)
 from app.models.conversation import Conversation, ConversationStatus, Message, SenderType
 from app.models.customer import Customer, CustomerContact
 from app.models.knowledge import (
@@ -16,10 +29,18 @@ from app.models.tenant import Tenant, TenantStatus
 from app.models.user import User, UserRole, UserStatus
 
 __all__ = [
+    "Agent",
+    "AgentConfig",
+    "AgentStatus",
     "Conversation",
     "ConversationStatus",
     "Customer",
     "CustomerContact",
+    "FeedbackRating",
+    "GenerationFeedback",
+    "GenerationRecord",
+    "GenerationSource",
+    "GenerationStatus",
     "Message",
     "SenderType",
     "Tenant",
@@ -37,4 +58,7 @@ __all__ = [
     "KnowledgeType",
     "ProcessingJobStatus",
     "ProcessingStage",
+    "ReplyLength",
+    "ReplyStyle",
+    "SalesAggressiveness",
 ]

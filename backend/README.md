@@ -1,5 +1,26 @@
 # Sales Agent Backend
 
+## 知识增强 LLM 架构
+
+第五阶段新增 `services/llm` 统一 ChatProvider，以及 `services/agent` 编排层。Provider 包含可重复、无外网调用的 `DeterministicTestChatProvider` 和 OpenAI Chat Completions 兼容实现；正式 Provider 支持普通与流式输出、JSON Schema、有限指数退避以及不支持 `response_format` 时的兼容回退，不会静默降级到测试模型。
+
+生成顺序为：校验当前租户的智能体/客户/会话/客户消息 → Redis 并发租约 → 检索当前企业 ready/active 知识 → 保存引用快照 → 分层组装安全 Prompt → 调用模型 → 严格结构校验（失败仅修复一次）→ 引用白名单过滤 → 风险与人工接管规则复核 → 保存生成审计记录。只有销售人工确认后，`save-message` 才创建正式 assistant 消息。
+
+新增迁移 `20260717_0003`，包含 `agents`、`agent_configs`、`generation_records`、`generation_sources`、`generation_feedback`，并扩展 `messages`。所有业务查询强制使用 JWT 租户上下文，客户端请求模型中禁止 `tenant_id`。
+
+主要接口：
+
+- `GET /api/v1/agents`、`GET /api/v1/agents/default`
+- `GET|PUT /api/v1/agents/{id}/config`
+- `GET /api/v1/agent/status`
+- `POST /api/v1/agent/generate`、`POST /api/v1/agent/generate-stream`
+- `GET /api/v1/agent/generations`、`GET /api/v1/agent/generations/{id}`
+- `POST /api/v1/agent/generations/{id}/save-message`
+- `POST /api/v1/agent/generations/{id}/feedback`
+- `GET /api/v1/agent/usage/summary`
+
+正式模型联调是可选检查。未配置密钥时自动化测试不会访问任何付费模型；配置后应按 `docs/llm-integration.md` 的用例进行少量人工验证。
+
 销转智能体后端服务，基于 FastAPI、SQLAlchemy 2、PostgreSQL + pgvector、Alembic、Celery 和 Redis。当前范围包含多租户企业、认证、客户、会话以及企业知识库；不包含大语言模型回复、OCR 或销冠知识库。
 
 ## 架构
