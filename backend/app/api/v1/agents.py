@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -9,6 +10,7 @@ from app.models.agent import Agent, AgentConfig
 from app.models.user import UserRole
 from app.schemas.agent import AgentConfigOut, AgentConfigUpdate, AgentOut
 from app.schemas.common import APIResponse, success_response
+from app.services.agent.config_lifecycle import snapshot_config
 
 router = APIRouter()
 
@@ -37,9 +39,7 @@ def get_default_agent(db: DbSession, current_user: CurrentUser) -> dict[str, obj
 
 @router.get("/{agent_id}/config", response_model=APIResponse[AgentConfigOut])
 def get_agent_config(agent_id: UUID, db: DbSession, current_user: CurrentUser) -> dict[str, object]:
-    return success_response(
-        AgentConfigOut.model_validate(_config_or_404(db, current_user.tenant_id, agent_id))
-    )
+    return success_response(config_out(_config_or_404(db, current_user.tenant_id, agent_id)))
 
 
 @router.put("/{agent_id}/config", response_model=APIResponse[AgentConfigOut])
@@ -55,10 +55,44 @@ def update_agent_config(
     config = _config_or_404(db, current_user.tenant_id, agent_id)
     for key, value in changes.items():
         setattr(config, key, value)
-    config.version += 1
+    config.draft_version = (config.draft_version or config.version) + 1
+    config.version = config.draft_version
+    config.draft_config_json = snapshot_config(config)
     db.commit()
     db.refresh(config)
-    return success_response(AgentConfigOut.model_validate(config), "智能体配置已更新")
+    return success_response(config_out(config), "智能体配置已保存为草稿")
+
+
+@router.post("/{agent_id}/config/publish", response_model=APIResponse[AgentConfigOut])
+def publish_agent_config(agent_id: UUID, db: DbSession, current_user: CurrentUser) -> dict[str, object]:
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER}:
+        raise AppException(403, "无权发布智能体配置", "AGENT_CONFIG_PUBLISH_FORBIDDEN")
+    config = _config_or_404(db, current_user.tenant_id, agent_id)
+    config.draft_config_json = snapshot_config(config)
+    config.published_config_json = dict(config.draft_config_json)
+    config.published_version = config.draft_version or config.version
+    config.published_at = datetime.now(UTC)
+    config.published_by_user_id = current_user.id
+    db.commit()
+    db.refresh(config)
+    return success_response(config_out(config), "配置已发布，将影响新生成")
+
+
+@router.post("/{agent_id}/config/restore", response_model=APIResponse[AgentConfigOut])
+def restore_agent_config(agent_id: UUID, db: DbSession, current_user: CurrentUser) -> dict[str, object]:
+    if current_user.role not in {UserRole.ADMIN, UserRole.MANAGER}:
+        raise AppException(403, "无权恢复智能体配置", "AGENT_CONFIG_RESTORE_FORBIDDEN")
+    config = _config_or_404(db, current_user.tenant_id, agent_id)
+    if not config.published_config_json:
+        raise AppException(409, "当前还没有可恢复的发布版本", "AGENT_CONFIG_NOT_PUBLISHED")
+    for key, value in config.published_config_json.items():
+        setattr(config, key, value)
+    config.draft_version = (config.draft_version or config.version) + 1
+    config.version = config.draft_version
+    config.draft_config_json = dict(config.published_config_json)
+    db.commit()
+    db.refresh(config)
+    return success_response(config_out(config), "已恢复为最近发布版本")
 
 
 def _config_or_404(db: DbSession, tenant_id: UUID, agent_id: UUID) -> AgentConfig:
@@ -74,3 +108,9 @@ def _config_or_404(db: DbSession, tenant_id: UUID, agent_id: UUID) -> AgentConfi
     if config is None:
         raise AppException(404, "智能体配置不存在", "AGENT_CONFIG_NOT_FOUND")
     return config
+
+
+def config_out(config: AgentConfig) -> AgentConfigOut:
+    return AgentConfigOut.model_validate(config).model_copy(
+        update={"has_published_config": bool(config.published_config_json)}
+    )

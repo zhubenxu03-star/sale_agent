@@ -56,6 +56,44 @@ export function useUpdateAgentConfig(agentId?: string) {
   });
 }
 
+export function usePublishAgentConfig(agentId?: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiRequest<AgentConfig>(`/api/agents/${agentId}/config/publish`, { method: "POST" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["agent", agentId, "config"] }),
+  });
+}
+
+export function useRestoreAgentConfig(agentId?: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiRequest<AgentConfig>(`/api/agents/${agentId}/config/restore`, { method: "POST" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["agent", agentId, "config"] }),
+  });
+}
+
+export interface AgentTestGenerateInput {
+  request_id: string;
+  agent_id: string;
+  customer_id: string;
+  conversation_id: string;
+  customer_message: string;
+  sales_stage?: string;
+  mode?: "standard" | "shorter" | "colloquial" | "conversion";
+  use_enterprise_knowledge: boolean;
+  use_champion_knowledge: boolean;
+}
+
+export function useTestAgentGenerate() {
+  return useMutation({
+    mutationFn: (payload: AgentTestGenerateInput) =>
+      apiRequest<Generation>("/api/agent/test-generate", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+  });
+}
+
 export async function streamGeneration(
   body: Record<string, unknown>,
   onEvent: (event: string, data: unknown) => void,

@@ -72,6 +72,11 @@ class GenerationStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class GenerationType(StrEnum):
+    STANDARD = "standard"
+    TEST = "test"
+
+
 class FeedbackRating(StrEnum):
     HELPFUL = "helpful"
     NOT_HELPFUL = "not_helpful"
@@ -118,6 +123,9 @@ class AgentConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     temperature: Mapped[float] = mapped_column(Float, default=0.3, nullable=False)
     max_output_tokens: Mapped[int] = mapped_column(Integer, default=1500, nullable=False)
     require_citations: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    enterprise_knowledge_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     prohibited_claims: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     human_handoff_rules: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     custom_instructions: Mapped[str | None] = mapped_column(Text)
@@ -135,8 +143,22 @@ class AgentConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     champion_allow_general_generation: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
+    # The scalar columns are the editable draft. Published configuration is a
+    # frozen JSON snapshot so historical generations remain reproducible.
+    draft_config_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    published_config_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    draft_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    published_version: Mapped[int | None] = mapped_column(Integer)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     agent: Mapped[Agent] = relationship(back_populates="config")
+
+    @property
+    def has_published_config(self) -> bool:
+        return bool(self.published_config_json)
 
 
 class GenerationRecord(UUIDPrimaryKeyMixin, Base):
@@ -169,6 +191,9 @@ class GenerationRecord(UUIDPrimaryKeyMixin, Base):
         enum_column(GenerationStatus, "generation_status"),
         default=GenerationStatus.QUEUED,
         index=True,
+    )
+    generation_type: Mapped[GenerationType] = mapped_column(
+        enum_column(GenerationType, "generation_type"), default=GenerationType.STANDARD, index=True
     )
     provider: Mapped[str] = mapped_column(String(80))
     model_name: Mapped[str] = mapped_column(String(160))

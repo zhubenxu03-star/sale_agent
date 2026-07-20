@@ -18,6 +18,7 @@ from app.models.agent import (
     GenerationRecord,
     GenerationSource,
     GenerationStatus,
+    GenerationType,
 )
 from app.models.champion import GenerationChampionSource
 from app.models.conversation import Conversation, Message, SenderType
@@ -28,6 +29,7 @@ from app.schemas.agent import AgentOutput, GenerationOut, GenerationRequest, Gen
 from app.schemas.champion import ChampionSearchRequest
 from app.schemas.knowledge import KnowledgeSearchRequest
 from app.services.agent.concurrency import GenerationLease
+from app.services.agent.config_lifecycle import effective_config
 from app.services.agent.prompt_builder import (
     PROMPT_VERSION,
     PromptContext,
@@ -49,6 +51,11 @@ async def generate_reply(
     payload: GenerationRequest,
     provider: ChatProvider | None = None,
     progress: Callable[[str, dict[str, object]], None] | None = None,
+    use_published_config: bool = True,
+    config_overrides: dict[str, object] | None = None,
+    generation_type: GenerationType = GenerationType.STANDARD,
+    use_enterprise_knowledge: bool = True,
+    use_champion_knowledge: bool = True,
 ) -> GenerationRecord:
     existing = _record_by_request(db, current_user.tenant_id, payload.request_id)
     if existing is not None:
@@ -58,8 +65,11 @@ async def generate_reply(
         if existing is not None:
             return existing
         agent, config, customer, conversation, source_message = _validate_scope(
-            db, current_user.tenant_id, payload
+            db, current_user.tenant_id, payload, use_published_config=use_published_config
         )
+        if config_overrides:
+            for key, value in config_overrides.items():
+                setattr(config, key, value)
         chat_provider = provider or get_chat_provider()
         provider_name = get_settings().llm_provider
         record = GenerationRecord(
@@ -70,6 +80,7 @@ async def generate_reply(
             source_message_id=source_message.id,
             request_id=payload.request_id,
             status=GenerationStatus.QUEUED,
+            generation_type=generation_type,
             provider=provider_name,
             model_name=getattr(chat_provider, "model_name", get_settings().llm_model or "unknown"),
             embedding_mode=get_settings().embedding_provider,
@@ -102,7 +113,11 @@ async def generate_reply(
                     "retrieving",
                     {"message": "正在检索企业知识", "generation_id": str(record.id)},
                 )
-            sources = _retrieve_sources(db, current_user, customer, config, record)
+            sources = (
+                _retrieve_sources(db, current_user, customer, config, record)
+                if use_enterprise_knowledge and config.enterprise_knowledge_enabled
+                else []
+            )
             if progress:
                 progress(
                     "sources",
@@ -112,8 +127,12 @@ async def generate_reply(
                         "generation_id": str(record.id),
                     },
                 )
-            champion_sources = _retrieve_champion_sources(
-                db, current_user, customer, config, record, source_message.content
+            champion_sources = (
+                _retrieve_champion_sources(
+                    db, current_user, customer, config, record, source_message.content
+                )
+                if use_champion_knowledge
+                else []
             )
             if progress:
                 progress(
@@ -243,7 +262,7 @@ def _json_content(content: str) -> str:
 
 
 def _validate_scope(
-    db: Session, tenant_id: UUID, payload: GenerationRequest
+    db: Session, tenant_id: UUID, payload: GenerationRequest, *, use_published_config: bool = True
 ) -> tuple[Agent, AgentConfig, Customer, Conversation, Message]:
     agent = db.scalar(
         select(Agent).where(
@@ -279,7 +298,7 @@ def _validate_scope(
     )
     if config is None or customer is None or conversation is None or message is None:
         raise AppException(404, "客户、会话或客户消息不存在", "GENERATION_CONTEXT_NOT_FOUND")
-    return agent, config, customer, conversation, message
+    return agent, effective_config(config, published=use_published_config), customer, conversation, message
 
 
 def _retrieve_sources(
@@ -457,6 +476,7 @@ def generation_out(record: GenerationRecord) -> GenerationOut:
         id=record.id,
         request_id=record.request_id,
         status=record.status,
+        generation_type=record.generation_type.value if hasattr(record.generation_type, "value") else str(record.generation_type),
         agent_id=record.agent_id,
         customer_id=record.customer_id,
         conversation_id=record.conversation_id,

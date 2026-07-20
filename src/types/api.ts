@@ -174,6 +174,7 @@ export interface Generation {
   embedding_mode: string;
   prompt_version: string;
   config_version: number;
+  generation_type?: "standard" | "test";
   result: AgentOutput | null;
   reply_text: string | null;
   need_human: boolean;
@@ -223,6 +224,7 @@ export interface AgentConfig {
   temperature: number;
   max_output_tokens: number;
   require_citations: boolean;
+  enterprise_knowledge_enabled: boolean;
   prohibited_claims: string[];
   human_handoff_rules: string[];
   custom_instructions: string | null;
@@ -238,4 +240,9 @@ export interface AgentConfig {
   champion_semantic_weight: number;
   champion_prefer_tenant: boolean;
   champion_allow_general_generation: boolean;
+  draft_version: number;
+  published_version: number | null;
+  published_at: string | null;
+  published_by_user_id: string | null;
+  has_published_config: boolean;
 }

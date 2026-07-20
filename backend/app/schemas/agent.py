@@ -113,6 +113,7 @@ class AgentConfigOut(BaseModel):
     temperature: float
     max_output_tokens: int
     require_citations: bool
+    enterprise_knowledge_enabled: bool = True
     prohibited_claims: list[str]
     human_handoff_rules: list[str]
     custom_instructions: str | None
@@ -127,6 +128,11 @@ class AgentConfigOut(BaseModel):
     champion_semantic_weight: float = 0.50
     champion_prefer_tenant: bool = True
     champion_allow_general_generation: bool = True
+    draft_version: int = 1
+    published_version: int | None = None
+    published_at: datetime | None = None
+    published_by_user_id: UUID | None = None
+    has_published_config: bool = False
     updated_at: datetime
 
 
@@ -142,6 +148,7 @@ class AgentConfigUpdate(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_output_tokens: int | None = Field(default=None, ge=128, le=8000)
     require_citations: bool | None = None
+    enterprise_knowledge_enabled: bool | None = None
     prohibited_claims: list[str] | None = Field(default=None, max_length=50)
     human_handoff_rules: list[str] | None = Field(default=None, max_length=50)
     custom_instructions: str | None = Field(default=None, max_length=4000)
@@ -180,6 +187,19 @@ class GenerationRequest(BaseModel):
     mode: Literal["standard", "shorter", "colloquial", "conversion"] = "standard"
 
 
+class TestGenerationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    agent_id: UUID
+    customer_id: UUID
+    conversation_id: UUID
+    customer_message: str = Field(min_length=1, max_length=12000)
+    sales_stage: SalesStage | None = None
+    mode: Literal["standard", "shorter", "colloquial", "conversion"] = "standard"
+    use_enterprise_knowledge: bool = True
+    use_champion_knowledge: bool = True
+
+
 class GenerationSourceOut(BaseModel):
     citation_key: str
     citation_label: str
@@ -212,6 +232,7 @@ class GenerationOut(BaseModel):
     embedding_mode: str
     prompt_version: str
     config_version: int
+    generation_type: Literal["standard", "test"] = "standard"
     result: AgentOutput | None
     reply_text: str | None
     need_human: bool

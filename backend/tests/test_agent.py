@@ -319,3 +319,70 @@ def test_redis_generation_concurrency_limit():
             await first.__aexit__()
 
     asyncio.run(scenario())
+
+
+def test_agent_config_draft_publish_restore_and_tenant_guard(client):
+    register_tenant(client, "alpha")
+    register_tenant(client, "beta")
+    alpha = auth_headers(client, "alpha")
+    beta = auth_headers(client, "beta")
+    agent = client.get("/api/v1/agents/default", headers=alpha).json()["data"]
+
+    saved = client.put(
+        f"/api/v1/agents/{agent['id']}/config",
+        headers=alpha,
+        json={"reply_style": "professional", "custom_instructions": "draft-only instruction"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["data"]["draft_version"] == 2
+    assert saved.json()["data"]["published_version"] is None
+    assert client.post(
+        f"/api/v1/agents/{agent['id']}/config/publish", headers=alpha
+    ).status_code == 200
+    published = client.get(f"/api/v1/agents/{agent['id']}/config", headers=alpha).json()["data"]
+    assert published["published_version"] == 2
+    assert published["has_published_config"] is True
+
+    assert client.put(
+        f"/api/v1/agents/{agent['id']}/config", headers=alpha, json={"tenant_id": "nope"}
+    ).status_code == 422
+    assert client.get(f"/api/v1/agents/{agent['id']}/config", headers=beta).status_code == 404
+    assert client.post(f"/api/v1/agents/{agent['id']}/config/publish", headers=beta).status_code == 404
+    restored = client.post(
+        f"/api/v1/agents/{agent['id']}/config/restore", headers=alpha
+    )
+    assert restored.status_code == 200
+
+
+def test_test_generate_uses_draft_and_does_not_create_assistant_message(client):
+    register_tenant(client, "alpha")
+    headers = auth_headers(client, "alpha")
+    customer = create_customer(client, headers)
+    conversation = create_conversation(client, headers, customer["id"])
+    agent = client.get("/api/v1/agents/default", headers=headers).json()["data"]
+    before = client.get(
+        f"/api/v1/conversations/{conversation['id']}/messages", headers=headers
+    ).json()["data"]
+    response = client.post(
+        "/api/v1/agent/test-generate",
+        headers=headers,
+        json={
+            "request_id": f"test-{uuid4().hex}",
+            "agent_id": agent["id"],
+            "customer_id": customer["id"],
+            "conversation_id": conversation["id"],
+            "customer_message": "鎴戞兂浜嗚В浠锋牸鍜屾柟妗堢殑宸紓",
+            "sales_stage": "quotation",
+            "use_enterprise_knowledge": False,
+            "use_champion_knowledge": False,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["generation_type"] == "test"
+    after = client.get(
+        f"/api/v1/conversations/{conversation['id']}/messages", headers=headers
+    ).json()["data"]
+    assert len(after) == len(before)
+    assert client.post(
+        "/api/v1/agent/test-generate", headers=headers, json={"tenant_id": "nope"}
+    ).status_code == 422
