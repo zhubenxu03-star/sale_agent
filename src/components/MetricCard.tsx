@@ -1,35 +1,23 @@
 import type { Metric } from "@/types";
 
 const toneStyle = {
-  navy: "bg-[var(--navy)] text-white",
-  gold: "bg-[var(--gold-soft)] text-[var(--gold-deep)]",
-  neutral: "bg-[#F1EEE8] text-[var(--navy)]",
-  success: "bg-[var(--success-soft)] text-[var(--success)]",
+  navy: "border-[var(--navy)]/15 bg-[var(--navy-soft)] text-[var(--navy)]",
+  gold: "border-[var(--gold)]/20 bg-[var(--gold-soft)] text-[var(--gold-deep)]",
+  neutral: "border-[var(--champagne)]/40 bg-[#F3F0EA] text-[var(--navy)]",
+  success: "border-[var(--success)]/15 bg-[var(--success-soft)] text-[var(--success)]",
 };
 
 export function MetricCard({ metric }: { metric: Metric }) {
   return (
-    <article className="metric-card panel-card group relative flex min-h-[104px] items-center justify-between overflow-hidden px-5 py-4">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium tracking-[0.08em] text-[var(--text-muted)]">{metric.label}</span>
-          <span className="h-1 w-1 rounded-full bg-[var(--champagne)]" />
-        </div>
-        <div className="mt-2.5 flex items-end gap-2">
-          <p className="truncate text-[22px] font-semibold tracking-[-0.02em] text-[var(--navy)]">{metric.value}</p>
-          {metric.label === "意向评分" && <span className="pb-1 text-[10px] text-[var(--text-muted)]">/ 100</span>}
-        </div>
-        <p className={`mt-1.5 inline-flex rounded-md px-2 py-0.5 text-[10px] ${toneStyle[metric.tone]}`}>{metric.helper}</p>
+    <article className="metric-card panel-card relative min-h-[78px] overflow-hidden px-4 py-3">
+      <p className="text-[11px] font-medium tracking-[0.06em] text-[var(--text-muted)]">{metric.label}</p>
+      <div className="mt-1 flex min-w-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-lg font-semibold tracking-[-0.01em] text-[var(--navy)]" title={metric.value}>{metric.value}</p>
+        {metric.progress !== undefined && (
+          <span className="shrink-0 text-xs font-semibold text-[var(--gold-deep)]">{metric.progress}%</span>
+        )}
       </div>
-      {metric.progress !== undefined ? (
-        <div className="relative grid h-[58px] w-[58px] shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(var(--gold) ${metric.progress * 3.6}deg, #EEEAE3 0deg)` }}>
-          <div className="grid h-[48px] w-[48px] place-items-center rounded-full bg-white text-[11px] font-semibold text-[var(--navy)]">{metric.progress}%</div>
-        </div>
-      ) : (
-        <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${toneStyle[metric.tone]}`}>
-          <span className="h-2 w-2 rounded-full bg-current opacity-70 shadow-[0_0_0_5px_currentColor] [box-shadow:0_0_0_5px_color-mix(in_srgb,currentColor_12%,transparent)]" />
-        </div>
-      )}
+      <p className={`mt-1 inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-[10px] ${toneStyle[metric.tone]}`} title={metric.helper}>{metric.helper}</p>
     </article>
   );
 }

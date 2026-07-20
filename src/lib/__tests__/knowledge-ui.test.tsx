@@ -228,18 +228,18 @@ describe("workbench knowledge integration", () => {
     hookMocks.search.mockReturnValue({ ...searchState(), mutate });
     render(<KnowledgePanel latestCustomerMessage="系统支持U8 Cloud对接吗？" />);
     fireEvent.click(
-      screen.getByRole("button", { name: "根据最新客户消息检索" }),
+      screen.getByRole("button", { name: "按最新客户消息检索" }),
     );
     expect(mutate).toHaveBeenCalledWith({
       query: "系统支持U8 Cloud对接吗？",
-      top_k: 3,
+      top_k: 4,
       min_score: 0.2,
     });
   });
 
   it("disables workbench retrieval when there is no customer message", () => {
     render(<KnowledgePanel />);
-    const button = screen.getByRole("button", { name: "根据最新客户消息检索" });
+    const button = screen.getByRole("button", { name: "按最新客户消息检索" });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", "当前会话还没有客户消息");
   });

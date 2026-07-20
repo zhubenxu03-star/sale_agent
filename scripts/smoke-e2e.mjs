@@ -103,7 +103,9 @@ try {
   await page.getByRole("button", { name: "保存客户消息" }).click();
   await page.getByText(customerMessage, { exact: true }).waitFor();
   await page.getByRole("button", { name: "生成回复" }).click();
-  await page.getByText(/推荐回复 · 生成置信度/).waitFor();
+  await page.getByText("AI 推荐回复", { exact: true }).waitFor();
+  const review = page.getByLabel("我已完成必要的人工审核");
+  if (await review.count()) await review.check();
   await page.getByRole("button", { name: "保存到会话" }).click();
   await page.getByText("回复已保存到会话").waitFor();
 
