@@ -245,3 +245,16 @@ alembic upgrade head
 ```
 
 前端仍需在项目根目录运行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；完整 Docker 检查使用 `docker compose config` 和 `docker compose up --build -d`。Swagger 位于 <http://localhost:8000/docs>，健康检查为 <http://localhost:8000/health>。
+## Agent 编排中心与草稿发布
+
+智能体配置现在分为基础身份、企业知识 K、销冠方法 S、回复/安全规则和测试发布五个模块。标量字段代表当前草稿；`draft_config_json` 保存可审计快照，发布后写入 `published_config_json`，并递增 `published_version`。正式 `agent/generate` 只读取已发布快照；`agent/test-generate` 显式读取草稿。
+
+新增接口：
+
+- `POST /api/v1/agents/{agent_id}/config/publish`
+- `POST /api/v1/agents/{agent_id}/config/restore`
+- `POST /api/v1/agent/test-generate`
+
+测试生成需要当前租户的智能体、客户和会话，客户消息只作为临时输入，处理结束后删除临时消息，不创建正式 assistant message；生成记录标记为 `generation_type=test`。请求体使用严格 Pydantic 模型并拒绝 `tenant_id`，租户由 JWT 决定。测试可独立开关 K/S 检索，K 只检索企业 ready 文档，S 只检索当前租户 approved 销冠卡片。
+
+数据库迁移 `20260720_0005` 增加草稿/发布快照、版本、发布时间、发布人、企业知识开关和生成类型字段。历史生成记录的 `config_version` 不会被发布新配置改写。

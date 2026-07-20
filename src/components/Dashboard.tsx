@@ -70,6 +70,8 @@ export function Dashboard() {
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [conversationDialog, setConversationDialog] = useState(false);
   const [latestGeneration, setLatestGeneration] = useState<Generation | null>(null);
+  const [contextCollapsed, setContextCollapsed] = useState(false);
+  const [regenerationRequest, setRegenerationRequest] = useState<{ id: number; strategyTitle: string } | null>(null);
   const { showToast } = useToast();
   const identity = useCurrentUser();
   const customersQuery = useCustomers(search);
@@ -131,6 +133,7 @@ export function Dashboard() {
           ? await updateCustomer.mutateAsync(payload)
           : await createCustomer.mutateAsync(payload);
       setCustomerDialog(null);
+      setRegenerationRequest(null);
       setSelection(saved.id);
       showToast(customerDialog === "edit" ? "客户资料已更新" : "客户创建成功", "success");
     } catch (error) {
@@ -142,6 +145,7 @@ export function Dashboard() {
     try {
       await deleteCustomer.mutateAsync(customerQuery.data.id);
       setDeleteDialog(false);
+      setRegenerationRequest(null);
       setSelection();
       showToast("客户及关联会话已删除", "success");
     } catch (error) {
@@ -152,6 +156,7 @@ export function Dashboard() {
     try {
       const created = await createConversation.mutateAsync(title);
       setConversationDialog(false);
+      setRegenerationRequest(null);
       setSelection(selectedCustomerId, created.id);
       showToast("会话创建成功", "success");
     } catch (error) {
@@ -173,16 +178,16 @@ export function Dashboard() {
         onToggleSidebar={() => setCollapsed((value) => !value)}
       />
       <main
-        className={`mt-16 h-[calc(100vh-64px)] min-h-[736px] overflow-auto p-[18px] transition-[margin] 2xl:p-6 ${collapsed ? "ml-[72px]" : "ml-[220px]"}`}
+        className={`mt-16 h-[calc(100vh-64px)] min-h-[620px] overflow-hidden p-3 transition-[margin] xl:p-4 2xl:p-5 ${collapsed ? "ml-[72px]" : "ml-[220px]"}`}
       >
-        <div className="mx-auto flex h-full min-w-[1000px] max-w-[1800px] flex-col gap-3.5 2xl:gap-4">
+        <div className="workspace-shell mx-auto flex h-full min-w-0 max-w-[1800px] flex-col gap-3 2xl:gap-4">
           <CustomerToolbar
             customers={customers}
             selectedId={selectedCustomerId}
             search={search}
             loading={customersQuery.isPending}
             onSearch={setSearch}
-            onSelect={(id) => setSelection(id)}
+            onSelect={(id) => { setRegenerationRequest(null); setSelection(id); }}
             onCreate={() => setCustomerDialog("create")}
           />
           {customersQuery.isError && (
@@ -193,10 +198,10 @@ export function Dashboard() {
               </button>
             </div>
           )}
-          <section className="grid shrink-0 grid-cols-4 gap-3.5 2xl:gap-4" aria-label="客户关键指标">
+          <section className="grid shrink-0 grid-cols-4 gap-3 2xl:gap-4" aria-label="客户关键指标">
             {metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
           </section>
-          <div className="grid min-h-[430px] flex-1 grid-cols-[minmax(0,1fr)_330px] gap-3.5 2xl:grid-cols-[minmax(0,1fr)_370px] 2xl:gap-4">
+          <div className={`grid min-h-0 flex-1 gap-3 2xl:gap-4 ${contextCollapsed ? "grid-cols-[minmax(0,1fr)_48px]" : "grid-cols-[minmax(0,7fr)_minmax(288px,3fr)]"}`}>
             <ChatPanel
               key={conversation?.id || "no-conversation"}
               customer={customerQuery.data}
@@ -205,21 +210,28 @@ export function Dashboard() {
               conversationsLoading={conversationsQuery.isPending && Boolean(customerQuery.data)}
               conversationsError={conversationsQuery.error instanceof Error ? conversationsQuery.error : null}
               onRetryConversations={() => { void conversationsQuery.refetch(); }}
-              onSelectConversation={(id) => setSelection(selectedCustomerId, id)}
+              onSelectConversation={(id) => { setRegenerationRequest(null); setSelection(selectedCustomerId, id); }}
               onNewConversation={() => setConversationDialog(true)}
               onGeneration={setLatestGeneration}
+              regenerationRequest={regenerationRequest}
             />
-            <aside className="chat-scroll grid min-h-0 grid-rows-[minmax(230px,1.35fr)_minmax(120px,.7fr)_minmax(120px,.7fr)] gap-3.5 overflow-y-auto 2xl:gap-4" aria-label="客户与知识辅助信息">
-              <CustomerPanel
-                customer={customerQuery.data}
-                loading={customerQuery.isPending && Boolean(selectedCustomerId)}
-                error={customerQuery.error}
-                onRetry={() => customerQuery.refetch()}
-                onEdit={() => setCustomerDialog("edit")}
-                onDelete={() => setDeleteDialog(true)}
-              />
-              <KnowledgePanel latestCustomerMessage={latestCustomerMessage} />
-              <ChampionPanel latestCustomerMessage={latestCustomerMessage} customer={customerQuery.data} />
+            <aside className="relative min-h-0 overflow-hidden rounded-[16px] border border-[var(--border)] bg-[#F4F1EB]" aria-label="客户与知识上下文">
+              <div className={`flex h-12 items-center border-b border-[var(--border)] bg-white/95 px-2 ${contextCollapsed ? "justify-center" : "justify-between"}`}>
+                {!contextCollapsed && <div><p className="text-sm font-semibold text-[var(--navy)]">上下文侧栏</p><p className="text-[10px] text-[var(--text-muted)]">客户 · 企业知识 K · 销冠策略 S</p></div>}
+                <button type="button" onClick={() => setContextCollapsed((value) => !value)} aria-label={contextCollapsed ? "展开上下文侧栏" : "收起上下文侧栏"} className="grid h-8 w-8 place-items-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--navy)]"><span className={`text-base transition-transform ${contextCollapsed ? "rotate-180" : ""}`}>›</span></button>
+              </div>
+              {!contextCollapsed && <div className="chat-scroll h-[calc(100%-48px)] space-y-3 overflow-y-auto p-3 2xl:space-y-4 2xl:p-4">
+                <CustomerPanel
+                  customer={customerQuery.data}
+                  loading={customerQuery.isPending && Boolean(selectedCustomerId)}
+                  error={customerQuery.error}
+                  onRetry={() => customerQuery.refetch()}
+                  onEdit={() => setCustomerDialog("edit")}
+                  onDelete={() => setDeleteDialog(true)}
+                />
+                <KnowledgePanel latestCustomerMessage={latestCustomerMessage} generation={latestGeneration} />
+                <ChampionPanel latestCustomerMessage={latestCustomerMessage} customer={customerQuery.data} generation={latestGeneration} onRegenerate={(strategyTitle) => setRegenerationRequest({ id: Date.now(), strategyTitle })} />
+              </div>}
             </aside>
           </div>
           <Workflow />

@@ -45,8 +45,8 @@ export function useRegister() {
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
+    onMutate: () => queryClient.cancelQueries(),
     mutationFn: () =>
       apiRequest<null>("/api/auth/logout", { method: "POST" }),
-    onSettled: () => queryClient.clear(),
   });
 }

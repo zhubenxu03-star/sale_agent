@@ -85,7 +85,7 @@ def source_out(item: ChampionSource) -> ChampionSourceOut:
 def card_out(db, item: ChampionCard, include_usage: bool = True) -> ChampionCardOut:
     usage = adopted = 0
     if include_usage:
-        usage = db.scalar(select(func.count()).select_from(GenerationChampionSource).where(GenerationChampionSource.tenant_id == item.tenant_id, GenerationChampionSource.card_id == item.id)) or 0
+        usage = db.scalar(select(func.count()).select_from(GenerationChampionSource).where(GenerationChampionSource.tenant_id == item.tenant_id, GenerationChampionSource.champion_card_id == item.id)) or 0
         adopted = db.scalar(select(func.count()).select_from(ChampionCardFeedback).where(ChampionCardFeedback.card_id == item.id, ChampionCardFeedback.adopted.is_(True))) or 0
     return ChampionCardOut.model_validate(item).model_copy(update={"usage_count": usage, "adopted_count": adopted})
 

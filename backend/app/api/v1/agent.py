@@ -12,8 +12,16 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.exceptions import AppException
 from app.dependencies.auth import CurrentUser, DbSession
-from app.models.agent import GenerationFeedback, GenerationRecord, GenerationStatus
-from app.models.conversation import Message, SenderType
+from app.models.agent import (
+    Agent,
+    AgentStatus,
+    GenerationFeedback,
+    GenerationRecord,
+    GenerationStatus,
+    GenerationType,
+)
+from app.models.conversation import Conversation, Message, SenderType
+from app.models.customer import Customer
 from app.models.knowledge import DocumentStatus, KnowledgeDocument
 from app.models.user import UserRole
 from app.schemas.agent import (
@@ -23,6 +31,7 @@ from app.schemas.agent import (
     GenerationOut,
     GenerationRequest,
     SaveGenerationMessageRequest,
+    TestGenerationRequest,
     UsageSummaryOut,
 )
 from app.schemas.common import APIResponse, success_response
@@ -70,6 +79,72 @@ async def generate(
     return success_response(
         generation_out(await generate_reply(db, current_user, payload)), "销转回复生成完成"
     )
+
+
+@router.post("/test-generate", response_model=APIResponse[GenerationOut])
+async def test_generate(
+    payload: TestGenerationRequest, db: DbSession, current_user: CurrentUser
+) -> dict[str, object]:
+    """Run the draft configuration without creating a formal assistant message."""
+
+    agent = db.scalar(
+        select(Agent).where(
+            Agent.id == payload.agent_id,
+            Agent.tenant_id == current_user.tenant_id,
+            Agent.status == AgentStatus.ACTIVE,
+        )
+    )
+    customer = db.scalar(
+        select(Customer).where(
+            Customer.id == payload.customer_id, Customer.tenant_id == current_user.tenant_id
+        )
+    )
+    conversation = db.scalar(
+        select(Conversation).where(
+            Conversation.id == payload.conversation_id,
+            Conversation.customer_id == payload.customer_id,
+            Conversation.tenant_id == current_user.tenant_id,
+        )
+    )
+    if agent is None or customer is None or conversation is None:
+        raise AppException(404, "测试客户、会话或智能体不存在", "TEST_GENERATION_CONTEXT_NOT_FOUND")
+    temp_message = Message(
+        tenant_id=current_user.tenant_id,
+        conversation_id=conversation.id,
+        sender_type=SenderType.CUSTOMER,
+        content=(
+            f"[测试销售阶段: {payload.sales_stage.value}]\n{payload.customer_message}"
+            if payload.sales_stage
+            else payload.customer_message
+        ),
+        metadata_json={"generation_type": "test"},
+    )
+    db.add(temp_message)
+    db.commit()
+    db.refresh(temp_message)
+    try:
+        request = GenerationRequest(
+            request_id=payload.request_id,
+            agent_id=payload.agent_id,
+            customer_id=payload.customer_id,
+            conversation_id=payload.conversation_id,
+            source_message_id=temp_message.id,
+            mode=payload.mode,
+        )
+        record = await generate_reply(
+            db,
+            current_user,
+            request,
+            use_published_config=False,
+            generation_type=GenerationType.TEST,
+            use_enterprise_knowledge=payload.use_enterprise_knowledge,
+            use_champion_knowledge=payload.use_champion_knowledge,
+            sales_stage_override=payload.sales_stage.value if payload.sales_stage else None,
+        )
+    finally:
+        db.delete(temp_message)
+        db.commit()
+    return success_response(generation_out(record), "测试生成完成，未写入正式会话")
 
 
 @router.post("/generate-stream")
@@ -124,8 +199,12 @@ def list_generations(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     conversation_id: UUID | None = None,
+    generation_type: GenerationType = Query(default=GenerationType.STANDARD),
 ) -> dict[str, object]:
-    filters = [GenerationRecord.tenant_id == current_user.tenant_id]
+    filters = [
+        GenerationRecord.tenant_id == current_user.tenant_id,
+        GenerationRecord.generation_type == generation_type,
+    ]
     if conversation_id:
         filters.append(GenerationRecord.conversation_id == conversation_id)
     total = db.scalar(select(func.count()).select_from(GenerationRecord).where(*filters)) or 0
@@ -166,6 +245,8 @@ def save_generation_message(
     current_user: CurrentUser,
 ) -> dict[str, object]:
     record = _generation_or_404(db, current_user.tenant_id, generation_id)
+    if record.generation_type == GenerationType.TEST:
+        raise AppException(409, "测试生成不能保存到正式会话", "TEST_GENERATION_NOT_SAVABLE")
     if record.status != GenerationStatus.COMPLETED:
         raise AppException(409, "仅可保存已完成的生成结果", "GENERATION_NOT_COMPLETED")
     existing = db.scalar(

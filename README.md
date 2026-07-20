@@ -161,3 +161,8 @@ Docker Compose 使用独立的 `migrate` 一次性服务执行 Alembic，`backen
 后端接口统一位于 `/api/v1/champion`，前端通过 `/api/champion/*` BFF 访问。管理员/经理负责导入和审核，销售只读已审批卡片。业务请求不接受 `tenant_id`，租户始终由 JWT 注入；跨租户资源统一返回 404。销冠知识仅作为内部方法（S）注入提示词，企业知识（K）仍只承载事实，最终回复不会把内部方法泄露给客户。
 
 新增迁移 `20260717_0004_champion_knowledge`，包含 `champion_sources`、`champion_import_jobs`、`champion_conversations`、`champion_messages`、`champion_cards`、`champion_card_versions`、`champion_card_feedback`、`champion_retrieval_logs`、`generation_champion_sources`，并扩展智能体配置。详细接口、权限、脱敏规则、Celery/Redis 处理和测试命令见 [backend/README.md](backend/README.md)。
+## Agent orchestration workbench
+
+`/settings/agent` is now the agent orchestration center. It groups identity, enterprise knowledge (K), champion methods (S), guardrails, and a non-persistent test sandbox. K remains the source of enterprise facts and S remains an internal sales-method layer; the frontend never builds prompts directly.
+
+Configuration edits are saved as a draft. `POST /api/v1/agents/{agent_id}/config/publish` freezes the draft snapshot for formal generation, while `POST .../config/restore` restores the latest published snapshot. Formal generations use the published version; the test workbench uses the draft and records `generation_type=test` without creating an assistant message. The browser calls the same-origin BFF endpoint `POST /api/agent/test-generate`, never FastAPI directly.

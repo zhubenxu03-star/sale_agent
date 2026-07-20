@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.agent import AgentConfig
 from app.models.champion import ChampionCard, ChampionCardStatus, ChampionRetrievalLog
-from app.schemas.champion import ChampionSearchRequest, ChampionSearchResult
+from app.schemas.champion import ChampionCardOut, ChampionSearchRequest, ChampionSearchResult
 from app.services.champion.embeddings import embed_card
 
 
@@ -58,15 +58,18 @@ def search_champion(
     for _index, (card, scores) in enumerate(ranked[: top_k * 3]):
         if any(item.card_type == card.card_type and sum(1 for item in results if item.card_type == card.card_type) >= 2 for item in results):
             continue
-        results.append(ChampionSearchResult.model_validate(card).model_copy(update={
-            "strategy_key": f"S{len(results) + 1}",
-            "semantic_score": round(scores[0], 4),
-            "industry_score": round(scores[1], 4),
-            "stage_score": round(scores[2], 4),
-            "success_score": round(scores[3], 4),
-            "admin_score_value": round(scores[4], 4),
-            "final_score": round(scores[5], 4),
-        }))
+        results.append(
+            ChampionSearchResult(
+                **ChampionCardOut.model_validate(card).model_dump(),
+                strategy_key=f"S{len(results) + 1}",
+                semantic_score=round(scores[0], 4),
+                industry_score=round(scores[1], 4),
+                stage_score=round(scores[2], 4),
+                success_score=round(scores[3], 4),
+                admin_score_value=round(scores[4], 4),
+                final_score=round(scores[5], 4),
+            )
+        )
         if len(results) >= top_k:
             break
     duration_ms = round((time.perf_counter() - started) * 1000)

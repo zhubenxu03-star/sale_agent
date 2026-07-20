@@ -11,7 +11,10 @@
     "test": "vitest run",
     "test:e2e": "node scripts/smoke-e2e.mjs",
     "test:knowledge-e2e": "node scripts/knowledge-e2e.mjs",
-    "test:agent-e2e": "node scripts/agent-e2e.mjs"
+    "test:agent-e2e": "node scripts/agent-e2e.mjs",
+    "test:agent-settings-e2e": "node scripts/agent-settings-e2e.mjs",
+    "test:agent-orchestration-real-e2e": "node scripts/agent-orchestration-real-e2e.mjs",
+    "test:workspace-layout-e2e": "node scripts/workspace-layout-e2e.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

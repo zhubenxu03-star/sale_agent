@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { Icon } from "./Icon";
 import { useLogout } from "@/hooks/useAuth";
 import { useToast } from "@/components/providers/AppProviders";
@@ -25,7 +24,6 @@ export function Header({
   title?: string;
   subtitle?: string;
 }) {
-  const router = useRouter();
   const logout = useLogout();
   const { showToast } = useToast();
   const handleLogout = async () => {
@@ -33,7 +31,7 @@ export function Header({
       await logout.mutateAsync();
     } finally {
       showToast("已安全退出登录", "success");
-      router.replace("/login");
+      window.location.replace("/login");
     }
   };
   const tenantInitial = identity.tenant.name.slice(0, 1);
