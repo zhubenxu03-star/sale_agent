@@ -214,6 +214,7 @@ export interface AgentServiceStatus {
 export interface AgentConfig {
   id: string;
   agent_id: string;
+  agent_name: string;
   identity_prompt: string;
   reply_style: "consultative" | "professional" | "friendly" | "concise" | "conversion";
   reply_length: "short" | "medium" | "long";

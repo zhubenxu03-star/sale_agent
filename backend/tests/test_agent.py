@@ -9,7 +9,12 @@ from sqlalchemy import select
 from app.core.config import Settings
 from app.core.exceptions import AppException
 from app.core.security import create_access_token, hash_password
-from app.models.agent import Agent, AgentConfig, GenerationRecord, GenerationStatus
+from app.models.agent import (
+    Agent,
+    AgentConfig,
+    GenerationRecord,
+    GenerationStatus,
+)
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole, UserStatus
 from app.schemas.agent import AgentOutput, GenerationSourceOut, RiskFlag
@@ -114,6 +119,32 @@ def test_deterministic_provider_is_repeatable():
     assert json.loads(first.content)["citations"][0]["citation_key"] == "K1"
 
 
+def test_deterministic_provider_fuses_real_k_and_s_content():
+    provider = DeterministicTestChatProvider()
+    messages = [
+        ChatMessage(
+            role="user",
+            content=(
+                '<tenant_agent_config>{"reply_style":"friendly","reply_length":"long"}</tenant_agent_config>\n'
+                "<retrieved_knowledge>[K1]\n来源：产品说明\n<untrusted_knowledge>课程包含诊断、培训和上线陪跑。</untrusted_knowledge></retrieved_knowledge>\n"
+                "<CHAMPION_SALES_METHODS>[S1]\n标题：价格异议\n适用阶段：quotation\n销售策略：先拆解价值再推进验证\n参考表达：可以先从小范围验证投入产出。\n风险提示：</CHAMPION_SALES_METHODS>\n"
+                "<current_customer_message>价格有点贵</current_customer_message>"
+            ),
+        )
+    ]
+    result = json.loads(
+        asyncio.run(
+            provider.generate(
+                messages, GenerationSettings(temperature=0.3, max_output_tokens=1000)
+            )
+        ).content
+    )
+    assert "课程包含诊断、培训和上线陪跑" in result["reply_text"]
+    assert "小范围验证投入产出" in result["reply_text"]
+    assert result["citations"][0]["citation_key"] == "K1"
+    assert result["champion_methods_used"][0]["strategy_key"] == "S1"
+
+
 def test_production_rejects_test_chat_provider():
     with pytest.raises(ValidationError, match="deterministic test chat"):
         Settings(
@@ -175,6 +206,20 @@ def test_prompt_injection_is_flagged_but_normal_reply_remains():
     )
     assert RiskFlag.PROMPT_INJECTION_DETECTED in output.risk_flags
     assert output.reply_text
+
+
+def test_configured_prohibited_claim_and_handoff_rule_are_enforced():
+    output = apply_safety_rules(
+        valid_output(),
+        "你们能保证效果吗？如果不行我要找负责人",
+        True,
+        prohibited_claims=["禁止保证效果"],
+        human_handoff_rules=["客户要求人工"],
+    )
+    assert output.need_human is True
+    assert RiskFlag.SECURITY_COMMITMENT in output.risk_flags
+    assert "命中禁止承诺规则" in (output.human_reason or "")
+    assert "命中人工接管规则" in (output.human_reason or "")
 
 
 def _create_generation(client, session_factory, code="alpha", need_human=False):
@@ -331,7 +376,11 @@ def test_agent_config_draft_publish_restore_and_tenant_guard(client):
     saved = client.put(
         f"/api/v1/agents/{agent['id']}/config",
         headers=alpha,
-        json={"reply_style": "professional", "custom_instructions": "draft-only instruction"},
+        json={
+            "agent_name": "企业销售顾问",
+            "reply_style": "professional",
+            "custom_instructions": "draft-only instruction",
+        },
     )
     assert saved.status_code == 200
     assert saved.json()["data"]["draft_version"] == 2
@@ -341,6 +390,7 @@ def test_agent_config_draft_publish_restore_and_tenant_guard(client):
     ).status_code == 200
     published = client.get(f"/api/v1/agents/{agent['id']}/config", headers=alpha).json()["data"]
     assert published["published_version"] == 2
+    assert published["agent_name"] == "企业销售顾问"
     assert published["has_published_config"] is True
 
     assert client.put(
@@ -379,10 +429,25 @@ def test_test_generate_uses_draft_and_does_not_create_assistant_message(client):
     )
     assert response.status_code == 200, response.text
     assert response.json()["data"]["generation_type"] == "test"
+    generation_id = response.json()["data"]["id"]
     after = client.get(
         f"/api/v1/conversations/{conversation['id']}/messages", headers=headers
     ).json()["data"]
     assert len(after) == len(before)
+    assert client.post(
+        f"/api/v1/agent/generations/{generation_id}/save-message",
+        headers=headers,
+        json={"reply_text": "不应保存", "confirmed_human_review": True},
+    ).status_code == 409
+    standard = client.get(
+        f"/api/v1/agent/generations?conversation_id={conversation['id']}", headers=headers
+    ).json()["data"]
+    tests = client.get(
+        f"/api/v1/agent/generations?conversation_id={conversation['id']}&generation_type=test",
+        headers=headers,
+    ).json()["data"]
+    assert standard["total"] == 0
+    assert tests["total"] == 1
     assert client.post(
         "/api/v1/agent/test-generate", headers=headers, json={"tenant_id": "nope"}
     ).status_code == 422

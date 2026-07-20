@@ -65,7 +65,14 @@ def register_tenant(db: Session, payload: RegisterTenantRequest) -> tuple[Tenant
                     ),
                     prohibited_claims=["未经依据不得承诺价格、折扣、交付、资质或效果"],
                     human_handoff_rules=[
-                        "投诉退款、合同法律、特殊折扣、安全合规或客户要求人工时转人工"
+                        "投诉退款",
+                        "合同法律问题",
+                        "特殊价格审批",
+                        "客户要求人工",
+                        "安全合规承诺",
+                        "高价值商机",
+                        "没有可靠知识",
+                        "低置信度",
                     ],
                 )
             )

@@ -139,6 +139,7 @@ async def test_generate(
             generation_type=GenerationType.TEST,
             use_enterprise_knowledge=payload.use_enterprise_knowledge,
             use_champion_knowledge=payload.use_champion_knowledge,
+            sales_stage_override=payload.sales_stage.value if payload.sales_stage else None,
         )
     finally:
         db.delete(temp_message)
@@ -198,8 +199,12 @@ def list_generations(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     conversation_id: UUID | None = None,
+    generation_type: GenerationType = Query(default=GenerationType.STANDARD),
 ) -> dict[str, object]:
-    filters = [GenerationRecord.tenant_id == current_user.tenant_id]
+    filters = [
+        GenerationRecord.tenant_id == current_user.tenant_id,
+        GenerationRecord.generation_type == generation_type,
+    ]
     if conversation_id:
         filters.append(GenerationRecord.conversation_id == conversation_id)
     total = db.scalar(select(func.count()).select_from(GenerationRecord).where(*filters)) or 0
@@ -240,6 +245,8 @@ def save_generation_message(
     current_user: CurrentUser,
 ) -> dict[str, object]:
     record = _generation_or_404(db, current_user.tenant_id, generation_id)
+    if record.generation_type == GenerationType.TEST:
+        raise AppException(409, "测试生成不能保存到正式会话", "TEST_GENERATION_NOT_SAVABLE")
     if record.status != GenerationStatus.COMPLETED:
         raise AppException(409, "仅可保存已完成的生成结果", "GENERATION_NOT_COMPLETED")
     existing = db.scalar(

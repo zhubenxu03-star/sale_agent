@@ -103,6 +103,7 @@ class AgentConfigOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     agent_id: UUID
+    agent_name: str
     identity_prompt: str
     reply_style: ReplyStyle
     reply_length: ReplyLength
@@ -138,6 +139,7 @@ class AgentConfigOut(BaseModel):
 
 class AgentConfigUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    agent_name: str | None = Field(default=None, min_length=1, max_length=120)
     identity_prompt: str | None = Field(default=None, min_length=10, max_length=4000)
     reply_style: ReplyStyle | None = None
     reply_length: ReplyLength | None = None

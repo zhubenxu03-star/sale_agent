@@ -19,11 +19,12 @@ class PromptContext:
     customer_message: str
     mode: str
     champion_sources: list[object] | None = None
+    sales_stage_override: str | None = None
 
 
 def build_prompt(context: PromptContext) -> list[ChatMessage]:
     identity = (
-        f"{context.config.identity_prompt}\n"
+        f"你是{context.config.agent_name}。\n{context.config.identity_prompt}\n"
         "你是企业销售顾问，只能提供销售建议，必须依据企业知识描述企业事实。"
         "不得编造价格、折扣、交付、案例、资质、能力或效果。只输出指定 JSON。"
     )
@@ -49,7 +50,7 @@ def build_prompt(context: PromptContext) -> list[ChatMessage]:
         "company_name": context.customer.company_name,
         "industry": context.customer.industry,
         "company_size": context.customer.company_size,
-        "stage": context.customer.stage,
+        "stage": context.sales_stage_override or context.customer.stage,
         "budget_min": str(context.customer.budget_min or ""),
         "budget_max": str(context.customer.budget_max or ""),
         "expected_amount": str(context.customer.expected_amount or ""),

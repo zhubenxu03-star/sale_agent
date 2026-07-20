@@ -56,6 +56,7 @@ async def generate_reply(
     generation_type: GenerationType = GenerationType.STANDARD,
     use_enterprise_knowledge: bool = True,
     use_champion_knowledge: bool = True,
+    sales_stage_override: str | None = None,
 ) -> GenerationRecord:
     existing = _record_by_request(db, current_user.tenant_id, payload.request_id)
     if existing is not None:
@@ -114,7 +115,14 @@ async def generate_reply(
                     {"message": "正在检索企业知识", "generation_id": str(record.id)},
                 )
             sources = (
-                _retrieve_sources(db, current_user, customer, config, record)
+                _retrieve_sources(
+                    db,
+                    current_user,
+                    customer,
+                    config,
+                    record,
+                    sales_stage_override=sales_stage_override,
+                )
                 if use_enterprise_knowledge and config.enterprise_knowledge_enabled
                 else []
             )
@@ -129,7 +137,13 @@ async def generate_reply(
                 )
             champion_sources = (
                 _retrieve_champion_sources(
-                    db, current_user, customer, config, record, source_message.content
+                    db,
+                    current_user,
+                    customer,
+                    config,
+                    record,
+                    source_message.content,
+                    sales_stage_override=sales_stage_override,
                 )
                 if use_champion_knowledge
                 else []
@@ -157,6 +171,7 @@ async def generate_reply(
                     customer_message=source_message.content,
                     mode=payload.mode,
                     champion_sources=_champion_cards_for_prompt(db, champion_sources),
+                    sales_stage_override=sales_stage_override,
                 )
             )
             record.status = GenerationStatus.GENERATING
@@ -181,6 +196,8 @@ async def generate_reply(
                 "\n".join(
                     [source_message.content, *(source.content_snapshot for source in sources)]
                 ),
+                config.prohibited_claims,
+                config.human_handoff_rules,
             )
             champion_risks = [
                 risk
@@ -307,6 +324,7 @@ def _retrieve_sources(
     customer: Customer,
     config: AgentConfig,
     record: GenerationRecord,
+    sales_stage_override: str | None = None,
 ) -> list[GenerationSource]:
     knowledge_base = db.scalar(
         select(KnowledgeBase).where(
@@ -319,8 +337,8 @@ def _retrieve_sources(
         *(customer.core_needs or [])[:3],
         *(customer.objections or [])[:3],
     ]
-    if customer.stage:
-        query_parts.append(str(customer.stage))
+    if sales_stage_override or customer.stage:
+        query_parts.append(str(sales_stage_override or customer.stage))
     data = search_knowledge(
         db,
         user.tenant_id,
@@ -378,11 +396,12 @@ def _retrieve_champion_sources(
     config: AgentConfig,
     record: GenerationRecord,
     customer_message: str,
+    sales_stage_override: str | None = None,
 ) -> list[GenerationChampionSource]:
     if not config.champion_enabled:
         return []
     query = " ".join(
-        [customer_message, *(customer.objections or [])[:2], *(customer.core_needs or [])[:2], str(customer.stage or "")]
+        [customer_message, *(customer.objections or [])[:2], *(customer.core_needs or [])[:2], str(sales_stage_override or customer.stage or "")]
     )[:4000]
     results = search_champion(
         db,
@@ -393,7 +412,7 @@ def _retrieve_champion_sources(
             customer_id=customer.id,
             conversation_id=record.conversation_id,
             industry=customer.industry,
-            sales_stage=str(customer.stage or ""),
+            sales_stage=str(sales_stage_override or customer.stage or ""),
             top_k=config.champion_top_k,
             min_score=config.champion_min_score,
         ),

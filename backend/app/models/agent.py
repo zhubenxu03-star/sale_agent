@@ -106,6 +106,7 @@ class AgentConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("tenants.id", ondelete="CASCADE"), index=True
     )
     agent_id: Mapped[UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), unique=True)
+    agent_name: Mapped[str] = mapped_column(String(120), default="企业销售顾问", nullable=False)
     identity_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     reply_style: Mapped[ReplyStyle] = mapped_column(
         enum_column(ReplyStyle, "agent_reply_style"), default=ReplyStyle.CONSULTATIVE

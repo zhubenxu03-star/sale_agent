@@ -108,6 +108,45 @@ def test_search_only_approved_and_tenant_isolated(client, session_factory) -> No
     db.close()
 
 
+def test_manual_card_can_be_approved_and_searched(client) -> None:
+    register_tenant(client, "champion-approved")
+    headers = auth_headers(client, "champion-approved")
+    payload = {
+        "title": "价格异议处理",
+        "card_type": "objection_handling",
+        "applicable_industries": ["企业服务"],
+        "applicable_sales_stages": ["quotation"],
+        "trigger_patterns": ["价格太高"],
+        "customer_example": "价格太高，我需要考虑",
+        "salesperson_reply": "可以先从小范围验证投入产出",
+        "strategy_summary": "先共情，再拆解价值",
+        "why_it_works": "降低决策压力",
+        "outcome": "won",
+        "historical_success_rate": 0.9,
+        "quality_score": 95,
+        "admin_score": 95,
+    }
+    created = client.post("/api/v1/champion/cards", headers=headers, json=payload)
+    assert created.status_code == 201, created.text
+    card_id = created.json()["data"]["id"]
+    approved = client.post(f"/api/v1/champion/cards/{card_id}/approve", headers=headers)
+    assert approved.status_code == 200, approved.text
+    result = client.post(
+        "/api/v1/champion/search",
+        headers=headers,
+        json={
+            "query": "价格有点贵",
+            "industry": "企业服务",
+            "sales_stage": "quotation",
+            "top_k": 4,
+            "min_score": 0,
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["data"][0]["id"] == card_id
+    assert result.json()["data"][0]["strategy_key"] == "S1"
+
+
 def test_sales_cannot_upload(client) -> None:
     register_tenant(client, "champion-sales")
     db = client.app.dependency_overrides

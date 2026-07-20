@@ -12,3 +12,8 @@ export async function PUT(request: NextRequest, context: Context) {
   const { path } = await context.params;
   return proxyAuthenticated(request, `/api/v1/agents/${path.join("/")}`, { method: "PUT" });
 }
+
+export async function POST(request: NextRequest, context: Context) {
+  const { path } = await context.params;
+  return proxyAuthenticated(request, `/api/v1/agents/${path.join("/")}`, { method: "POST" });
+}

@@ -7,6 +7,7 @@ from typing import Any
 from app.models.agent import AgentConfig, ReplyLength, ReplyStyle, SalesAggressiveness
 
 CONFIG_FIELDS = (
+    "agent_name",
     "identity_prompt",
     "reply_style",
     "reply_length",

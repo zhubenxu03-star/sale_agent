@@ -3,10 +3,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { AuthShell, FormField, authInputClass } from "@/components/auth/AuthShell";
-import { useCurrentUser, useLogin } from "@/hooks/useAuth";
+import { useLogin } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api/client";
 import { loginSchema, type LoginValues } from "@/schemas/auth";
 
@@ -15,15 +15,10 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const login = useLogin();
-  const me = useCurrentUser();
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { tenant_code: "", email: "", password: "" },
   });
-
-  useEffect(() => {
-    if (me.data) router.replace("/");
-  }, [me.data, router]);
 
   const submit = form.handleSubmit(async (values) => {
     try {
