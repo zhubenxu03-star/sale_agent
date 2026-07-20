@@ -55,6 +55,12 @@ class Citation(BaseModel):
     claim: str = Field(min_length=1, max_length=1000)
 
 
+class ChampionMethodUsed(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    strategy_key: str = Field(pattern=r"^S[1-9][0-9]*$")
+    purpose: str = Field(min_length=1, max_length=500)
+
+
 class AgentOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reply_text: str = Field(min_length=1, max_length=12000)
@@ -71,6 +77,7 @@ class AgentOutput(BaseModel):
     risk_flags: list[RiskFlag] = Field(max_length=20)
     confidence: float = Field(ge=0, le=1)
     citations: list[Citation] = Field(max_length=20)
+    champion_methods_used: list[ChampionMethodUsed] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
     def validate_handoff(self) -> "AgentOutput":
@@ -110,6 +117,16 @@ class AgentConfigOut(BaseModel):
     human_handoff_rules: list[str]
     custom_instructions: str | None
     version: int
+    champion_enabled: bool = True
+    champion_top_k: int = 4
+    champion_min_score: float = 0.35
+    champion_industry_weight: float = 0.15
+    champion_stage_weight: float = 0.15
+    champion_success_weight: float = 0.10
+    champion_admin_score_weight: float = 0.10
+    champion_semantic_weight: float = 0.50
+    champion_prefer_tenant: bool = True
+    champion_allow_general_generation: bool = True
     updated_at: datetime
 
 
@@ -128,6 +145,29 @@ class AgentConfigUpdate(BaseModel):
     prohibited_claims: list[str] | None = Field(default=None, max_length=50)
     human_handoff_rules: list[str] | None = Field(default=None, max_length=50)
     custom_instructions: str | None = Field(default=None, max_length=4000)
+    champion_enabled: bool | None = None
+    champion_top_k: int | None = Field(default=None, ge=1, le=10)
+    champion_min_score: float | None = Field(default=None, ge=0, le=1)
+    champion_industry_weight: float | None = Field(default=None, ge=0, le=1)
+    champion_stage_weight: float | None = Field(default=None, ge=0, le=1)
+    champion_success_weight: float | None = Field(default=None, ge=0, le=1)
+    champion_admin_score_weight: float | None = Field(default=None, ge=0, le=1)
+    champion_semantic_weight: float | None = Field(default=None, ge=0, le=1)
+    champion_prefer_tenant: bool | None = None
+    champion_allow_general_generation: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_champion_weights(self) -> "AgentConfigUpdate":
+        weights = (
+            self.champion_semantic_weight,
+            self.champion_industry_weight,
+            self.champion_stage_weight,
+            self.champion_success_weight,
+            self.champion_admin_score_weight,
+        )
+        if all(item is not None for item in weights) and abs(sum(weights) - 1) > 0.02:
+            raise ValueError("销冠检索权重总和必须接近1")
+        return self
 
 
 class GenerationRequest(BaseModel):
@@ -147,6 +187,16 @@ class GenerationSourceOut(BaseModel):
     retrieval_score: float
     used_in_reply: bool
     document_available: bool
+
+
+class GenerationChampionSourceOut(BaseModel):
+    strategy_key: str
+    title_snapshot: str
+    card_type: str
+    strategy_snapshot: str
+    reply_snapshot: str
+    retrieval_score: float
+    used_in_strategy: bool
 
 
 class GenerationOut(BaseModel):
@@ -174,6 +224,7 @@ class GenerationOut(BaseModel):
     error_code: str | None
     error_message: str | None
     sources: list[GenerationSourceOut]
+    champion_sources: list[GenerationChampionSourceOut] = []
     created_at: datetime
     completed_at: datetime | None
 

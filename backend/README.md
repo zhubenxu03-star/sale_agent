@@ -206,3 +206,42 @@ admin 可管理知识库和文档；manager 可上传、下载、重新处理、
 浏览器不会直接调用本服务，而是访问 Next.js 的同源 `/api` BFF。BFF 从 HttpOnly Cookie 读取 JWT 后再以 Bearer Token 转发；业务请求中的租户身份仍只由后端验证后的 JWT 决定。
 
 会话列表支持可选的 `customer_id` 查询参数。传入时会先确认客户属于当前租户，再同时按 `tenant_id` 与 `customer_id` 筛选；其他租户的客户统一返回 404。`owner_user_id` 如被指定，也必须属于当前租户。
+## 销冠知识库（Stage 6）
+
+### 处理流水线
+
+```text
+上传 -> 格式解析 -> 字段/角色映射 -> 后端强制脱敏 -> 会话切片
+     -> 确定性或 LLM 结构化抽取 -> REVIEW 卡片 -> 人工审核
+     -> 去重/版本 -> Embedding -> APPROVED 检索
+```
+
+支持 TXT、MD、CSV、XLSX、JSON、DOCX。导入请求只保存文件和任务元数据，实际处理由 Celery worker 执行；任务具有租户校验、幂等成功重试和失败状态。脱敏发生在后端，覆盖手机号、邮箱、身份证、银行卡、微信/QQ、地址和常见姓名，可配置自定义词；原始文件不会进入 Prompt 或卡片正文。
+
+### Champion API
+
+- 来源：`GET|POST /api/v1/champion/sources`、`POST .../upload`、`GET .../{id}/preview`、`POST .../{id}/mapping`、`POST .../{id}/process`、`GET .../{id}/status`、`POST .../{id}/reprocess`、`PATCH .../{id}/disable`、`DELETE .../{id}`、`GET .../{id}/download`
+- 对话：`GET /api/v1/champion/conversations`、`GET .../{id}`、`GET .../{id}/messages`
+- 卡片：`GET|POST /api/v1/champion/cards`、`GET|PUT .../{id}`、`POST .../{id}/approve|reject|disable|enable`、`DELETE .../{id}`、`GET .../{id}/versions`、`POST /api/v1/champion/cards/bulk-approve|bulk-reject|feedback`
+- 检索与统计：`POST /api/v1/champion/search`、`GET /api/v1/champion/stats`、`GET /api/v1/champion/usage-summary`
+
+所有查询按 JWT 的 `tenant_id` 过滤；跨租户来源、会话、卡片和检索结果不可见。销售角色只能读取 `APPROVED` 卡片。原文下载仅管理员可用，且不会通过浏览器直接暴露存储路径。
+
+卡片字段包括标题、场景、客户阶段、行业、问题、策略、话术示例、风险、结果、来源引用、置信度和标签。确定性抽取器用于本地测试和无密钥开发；生产环境应配置正式 LLM/Embedding provider，`APP_ENV=production` 会拒绝 test provider。默认检索只返回已审批、未禁用且属于当前租户的卡片，支持 `top_k`、最低分、行业/阶段过滤和类型多样性。
+
+### 智能体双路检索
+
+`agent/generate` 和 `agent/generate-stream` 先检索企业知识 K，再检索销冠方法 S，并将两者分别记录到 `generation_sources` 与 `generation_champion_sources`。提示词明确禁止把 S 当作企业事实；输出中的 `champion_methods_used` 只能引用后端提供的卡片键。工作台的销冠面板只展示内部策略，复制给客户的回复仍只包含安全的客户话术。
+
+### Stage 6 检查
+
+```bash
+ruff check app tests alembic
+python -m compileall -q app alembic
+pytest
+alembic check
+alembic downgrade -1
+alembic upgrade head
+```
+
+前端仍需在项目根目录运行 `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`；完整 Docker 检查使用 `docker compose config` 和 `docker compose up --build -d`。Swagger 位于 <http://localhost:8000/docs>，健康检查为 <http://localhost:8000/health>。
