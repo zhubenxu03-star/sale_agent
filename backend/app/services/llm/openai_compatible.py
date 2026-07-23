@@ -28,11 +28,25 @@ class OpenAICompatibleChatProvider(ChatProvider):
     ) -> ChatResult:
         payload = self._payload(messages, settings, stream=False, use_format=True)
         try:
-            response = await self._post(payload)
-            if response.status_code == 400 and "response_format" in payload:
-                payload.pop("response_format", None)
+            empty_attempt = 0
+            while True:
                 response = await self._post(payload)
-            response.raise_for_status()
+                if response.status_code == 400 and "response_format" in payload:
+                    payload.pop("response_format", None)
+                    response = await self._post(payload)
+                response.raise_for_status()
+                body = response.json()
+                try:
+                    content = _extract_content(body)
+                    break
+                except ChatProviderError as exc:
+                    if (
+                        exc.code != "LLM_EMPTY_RESPONSE"
+                        or empty_attempt >= self.config.llm_max_retries
+                    ):
+                        raise
+                    await asyncio.sleep(0.25 * (2**empty_attempt))
+                    empty_attempt += 1
         except httpx.TimeoutException as exc:
             raise ChatProviderTimeout() from exc
         except httpx.HTTPStatusError as exc:
@@ -41,8 +55,6 @@ class OpenAICompatibleChatProvider(ChatProvider):
                 "LLM_UPSTREAM_ERROR",
                 503 if exc.response.status_code in RETRYABLE_STATUS else 502,
             ) from exc
-        body = response.json()
-        content = _extract_content(body)
         usage = body.get("usage") or {}
         return ChatResult(
             content=content,
@@ -91,6 +103,10 @@ class OpenAICompatibleChatProvider(ChatProvider):
                             if delta:
                                 chunks.append(delta)
                                 yield ChatStreamEvent(type="delta", delta=delta)
+                    if not chunks and attempt < self.config.llm_max_retries:
+                        await asyncio.sleep(0.25 * (2**attempt))
+                        attempt += 1
+                        continue
                     break
         except httpx.TimeoutException as exc:
             raise ChatProviderTimeout() from exc
@@ -134,10 +150,7 @@ class OpenAICompatibleChatProvider(ChatProvider):
             "stream": stream,
         }
         if use_format and settings.json_schema:
-            payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "sales_reply", "schema": settings.json_schema},
-            }
+            payload["response_format"] = {"type": "json_object"}
         return payload
 
     def _headers(self) -> dict[str, str]:

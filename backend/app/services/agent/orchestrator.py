@@ -36,7 +36,11 @@ from app.services.agent.prompt_builder import (
     build_prompt,
     build_repair_prompt,
 )
-from app.services.agent.safety import apply_safety_rules, validate_citations
+from app.services.agent.safety import (
+    apply_champion_risk_notes,
+    apply_safety_rules,
+    validate_citations,
+)
 from app.services.champion.retrieval import search_champion
 from app.services.knowledge.retrieval import search_knowledge
 from app.services.llm import get_chat_provider
@@ -199,27 +203,36 @@ async def generate_reply(
                 config.prohibited_claims,
                 config.human_handoff_rules,
             )
+            valid_strategy_keys = {source.strategy_key for source in champion_sources}
+            output.champion_methods_used = [
+                method
+                for method in output.champion_methods_used
+                if method.strategy_key in valid_strategy_keys
+            ]
+            used_strategy_keys = {
+                method.strategy_key for method in output.champion_methods_used
+            }
             champion_risks = [
                 risk
-                for source in _champion_cards_for_prompt(db, champion_sources)
+                for source in _champion_cards_for_prompt(
+                    db,
+                    [
+                        source
+                        for source in champion_sources
+                        if source.strategy_key in used_strategy_keys
+                    ],
+                )
                 for risk in (source.risk_notes or [])
             ]
-            if champion_risks:
-                output.risk_flags = list(dict.fromkeys([*output.risk_flags, "DISCOUNT_APPROVAL_REQUIRED"]))
-                if not output.need_human and any("承诺" in risk or "折扣" in risk or "价格" in risk for risk in champion_risks):
-                    output.need_human = True
-                    output.human_reason = "销冠经验包含需要人工确认的风险提示"
+            output = apply_champion_risk_notes(
+                output, source_message.content, champion_risks
+            )
             if progress:
                 progress(
                     "validating",
                     {"message": "正在校验引用与风险", "generation_id": str(record.id)},
                 )
             used_keys = {citation.citation_key for citation in output.citations}
-            valid_strategy_keys = {source.strategy_key for source in champion_sources}
-            output.champion_methods_used = [
-                method for method in output.champion_methods_used if method.strategy_key in valid_strategy_keys
-            ]
-            used_strategy_keys = {method.strategy_key for method in output.champion_methods_used}
             for source in champion_sources:
                 source.used_in_strategy = source.strategy_key in used_strategy_keys
             for source in sources:
